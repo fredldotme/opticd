@@ -44,7 +44,7 @@ void V4L2LoopbackSink::addLoopbackDevice()
     cfg.announce_all_caps = 0;
     cfg.max_width = this->m_width;
     cfg.max_height = this->m_height;
-    cfg.max_buffers = 2;
+    cfg.max_buffers = 1;
     cfg.max_openers = 32;
 
     int ret = ioctl(fd, V4L2LOOPBACK_CTL_ADD, &cfg);

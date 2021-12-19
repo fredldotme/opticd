@@ -36,6 +36,7 @@ public:
     Q_INVOKABLE void requestFrame();
     Q_INVOKABLE void updatePreview();
 
+    void setSize(const size_t& width, const size_t& height);
     size_t width();
     size_t height();
 

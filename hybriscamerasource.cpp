@@ -72,15 +72,20 @@ static void readTextureIntoBuffer(void* ctx)
     const size_t rgbaSize = thiz->width() * thiz->height() * 4;
     uint8_t* rgbaBuffer = new uint8_t[rgbaSize];
     glReadPixels(0, 0, thiz->width(), thiz->height(), GL_RGBA, GL_UNSIGNED_BYTE, rgbaBuffer);
-    //glReadPixels(0, 0, thiz->width(), thiz->height(), GL_RGBA, GL_UNSIGNED_BYTE, thiz->pixelBuffer());
     glBindFramebuffer(GL_FRAMEBUFFER, prevFbo);
     removeAlpha(rgbaBuffer, thiz->pixelBuffer(), rgbaSize);
 
-    //rgb2yuv420p((char*)rgbBuffer, (char*)thiz->pixelBuffer(), thiz->width(), thiz->height());
     delete[] rgbaBuffer;
 
     QMetaObject::invokeMethod(thiz, "updatePreview", Qt::QueuedConnection);
     QMetaObject::invokeMethod(thiz, "requestFrame", Qt::QueuedConnection);
+}
+
+static void setPreviewSize(void* ctx, int width, int height)
+{
+    HybrisCameraSource* thiz = static_cast<HybrisCameraSource*>(ctx);
+
+    thiz->setSize(width, height);
 }
 
 HybrisCameraSource::HybrisCameraSource(HybrisCameraInfo info, EGLContext context, EGLDisplay display, QObject *parent) :
@@ -101,11 +106,12 @@ HybrisCameraSource::HybrisCameraSource(HybrisCameraInfo info, EGLContext context
     this->m_listener->context = this;
     this->m_listener->on_preview_texture_needs_update_cb = &readTextureIntoBuffer;
 
-    //android_camera_enumerate_supported_preview_sizes(this->m_control);
+    android_camera_enumerate_supported_preview_sizes(this->m_control, &setPreviewSize, this);
+    android_camera_set_preview_size(this->m_control, this->width(), this->height());
     //this->m_pixelBuffer = new uint8_t[this->width() * this->height() * 3 / 2];
     //this->m_pixelBuffer = new uint8_t[this->width() * this->height() * 3];
     this->m_pixelBuffer.resize(this->width() * this->height() * 3);
-    android_camera_set_preview_size(this->m_control, this->width(), this->height());
+    android_camera_set_preview_format(this->m_control, CAMERA_PIXEL_FORMAT_RGBA8888);
     provideFramebuffer(&this->m_fbo);
     provideTexture(&this->m_texture);
     android_camera_set_preview_texture(this->m_control, this->texture());
@@ -115,6 +121,7 @@ HybrisCameraSource::~HybrisCameraSource()
 {
     if (this->m_control) {
         android_camera_disconnect(this->m_control);
+        android_camera_delete(this->m_control);
         this->m_control = nullptr;
     }
 
@@ -124,14 +131,20 @@ HybrisCameraSource::~HybrisCameraSource()
     }
 }
 
+void HybrisCameraSource::setSize(const size_t &width, const size_t &height)
+{
+    this->m_width = width;
+    this->m_height = height;
+}
+
 size_t HybrisCameraSource::width()
 {
-    return 1280;
+    return this->m_width;
 }
 
 size_t HybrisCameraSource::height()
 {
-    return 720;
+    return this->m_height;
 }
 
 EGLContext HybrisCameraSource::eglContext()
