@@ -77,7 +77,7 @@ static void removeAlpha(uint8_t* from, uint8_t* to, size_t fromLength)
     size_t toLength = 0;
     for (int i = 0; i < fromLength; i++) {
         to[toLength] = from[i];
-        if (i % 4 == 0)
+        if (i % 3 == 0)
             ++toLength;
     }
 }
