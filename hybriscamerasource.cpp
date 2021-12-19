@@ -44,34 +44,6 @@ QVector<HybrisCameraInfo> HybrisCameraSource::availableCameras()
     return ret;
 }
 
-static void rgb2yuv420p(char* rgb, char* yuv420p, unsigned int width, unsigned int height)
-{
-  unsigned int i = 0;
-  unsigned int numpixels = width * height;
-  unsigned int ui = numpixels;
-  unsigned int vi = numpixels + numpixels / 4;
-  unsigned int s = 0;
-  const unsigned int colors = 4;
-
-#define sR (char)(rgb[s+2])
-#define sG (char)(rgb[s+1])
-#define sB (char)(rgb[s+0])
-
-  for (int j = 0; j < height; j++)
-    for (int k = 0; k < width; k++)
-    {
-      yuv420p[i] = (char)( (66*sR + 129*sG + 25*sB + 128) >> 8) + 16;
-
-      if (0 == j%2 && 0 == k%2)
-      {
-        yuv420p[ui++] = (char)( (-38*sR - 74*sG + 112*sB + 128) >> 8) + 128;
-        yuv420p[vi++] = (char)( (112*sR - 94*sG - 18*sB + 128) >> 8) + 128;
-      }
-      i++;
-      s += colors;
-    }
-}
-
 static void removeAlpha(uint8_t* from, uint8_t* to, size_t fromLength)
 {
     size_t toLength = 0;
@@ -108,6 +80,7 @@ static void readTextureIntoBuffer(void* ctx)
     delete[] rgbaBuffer;
 
     QMetaObject::invokeMethod(thiz, "updatePreview", Qt::QueuedConnection);
+    QMetaObject::invokeMethod(thiz, "requestFrame", Qt::QueuedConnection);
 }
 
 HybrisCameraSource::HybrisCameraSource(HybrisCameraInfo info, EGLContext context, EGLDisplay display, QObject *parent) :

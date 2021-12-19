@@ -32,9 +32,8 @@ public:
                                 QObject *parent = nullptr);
     ~HybrisCameraSource();
     void start();
-    void requestFrame();
     void stop();
-
+    Q_INVOKABLE void requestFrame();
     Q_INVOKABLE void updatePreview();
 
     size_t width();

@@ -123,19 +123,9 @@ void V4L2LoopbackSink::pushCapture(QByteArray capture)
     }
 }
 
-void V4L2LoopbackSink::runLoop()
+void V4L2LoopbackSink::run()
 {
     addLoopbackDevice();
     openLoopbackDevice();
-
-    this->m_running = true;
-    while (this->m_running) {
-        QThread::msleep(1000 / 30);
-        emit frameRequested();
-    }
 }
 
-void V4L2LoopbackSink::stopLoop()
-{
-    this->m_running = false;
-}

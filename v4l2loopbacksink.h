@@ -14,8 +14,7 @@ public:
     ~V4L2LoopbackSink();
 
     void pushCapture(QByteArray capture);
-    void runLoop();
-    void stopLoop();
+    void run();
 
 private:
     void addLoopbackDevice();
@@ -29,7 +28,6 @@ private:
     int m_deviceNumber = 0;
     int m_sinkFd = -1;
     int m_vidsendsiz = 0;
-    bool m_running = false;
 
 signals:
     void deviceOpened();
