@@ -1,52 +1,86 @@
 #include <QCoreApplication>
-#include <QCameraInfo>
+#include <QDebug>
+#include <QMutex>
+#include <QMutexLocker>
 #include <QPair>
 #include <QThread>
 #include <QVector>
 
 #include <signal.h>
 
-#include "qtcamerasource.h"
+#include "eglhelper.h"
+#include "hybriscamerasource.h"
 #include "v4l2loopbacksink.h"
 
 struct SourceSinkPair {
-    QtCameraSource* source = nullptr;
+    HybrisCameraSource* source = nullptr;
     V4L2LoopbackSink* sink = nullptr;
     QThread* sinkThread = nullptr;
 };
 
+// Query available cameras and create the bridges
+QVector<SourceSinkPair> bridges;
+QMutex cleanupMutex;
+
+void cleanup()
+{
+    // Stop bridges after quit is requested
+    QMutexLocker locker(&cleanupMutex);
+    for (SourceSinkPair& bridge : bridges) {
+        //bridge.sinkThread->terminate();
+        //bridge.sinkThread->wait();
+        delete bridge.sink;
+        bridge.sink = nullptr;
+        delete bridge.source;
+        bridge.source = nullptr;
+        delete bridge.sinkThread;
+        bridge.sinkThread = nullptr;
+    }
+}
+
 void sig_handler(int sig_num)
 {
-    qApp->exit(0);
+    qInfo("Quitting...");
+    cleanup();
+    exit(0);
 }
 
 int main(int argc, char *argv[])
 {
+    EGLDisplay display;
+    EGLContext context;
+
     QCoreApplication a(argc, argv);
+
+    bool initSuccess = initEgl(&context, &display);
+    if (!initSuccess) {
+        qWarning() << "EGL not initialized";
+        return 1;
+    }
 
     signal(SIGINT, sig_handler);
 
-    // Query available cameras and create the bridges
-    QVector<SourceSinkPair> bridges;
-
-    for (const QCameraInfo &cameraInfo : QCameraInfo::availableCameras()) {
-        QtCameraSource* source = new QtCameraSource(cameraInfo.position());
+    int counter = 0;
+    for (const HybrisCameraInfo &cameraInfo : HybrisCameraSource::availableCameras()) {
+        HybrisCameraSource* source = new HybrisCameraSource(cameraInfo,
+                                                            context,
+                                                            display);
         QThread* sinkThread = new QThread();
         V4L2LoopbackSink* sink = new V4L2LoopbackSink(source->width(),
                                                       source->height(),
-                                                      cameraInfo.description());
+                                                      cameraInfo.description);
         sink->moveToThread(sinkThread);
 
         // Open and close device on demand
         QObject::connect(sink, &V4L2LoopbackSink::deviceOpened,
-                         source, &QtCameraSource::start);
+                         source, &HybrisCameraSource::start);
         QObject::connect(sink, &V4L2LoopbackSink::deviceClosed,
-                         source, &QtCameraSource::stop);
+                         source, &HybrisCameraSource::stop);
 
         // Frame passing through two-way communication between sink and source
         QObject::connect(sink, &V4L2LoopbackSink::frameRequested,
-                         source, &QtCameraSource::requestFrame, Qt::DirectConnection);
-        QObject::connect(source, &QtCameraSource::captured,
+                         source, &HybrisCameraSource::requestFrame, Qt::DirectConnection);
+        QObject::connect(source, &HybrisCameraSource::captured,
                          sink, &V4L2LoopbackSink::pushCapture, Qt::DirectConnection);
 
         // Start the sink loop
@@ -64,17 +98,7 @@ int main(int argc, char *argv[])
     // Run the service
     int ret = a.exec();
 
-    // Stop bridges after quit is requested
-    for (SourceSinkPair& bridge : bridges) {
-        bridge.sinkThread->terminate();
-        bridge.sinkThread->wait();
-        delete bridge.sink;
-        bridge.sink = nullptr;
-        delete bridge.source;
-        bridge.source = nullptr;
-        delete bridge.sinkThread;
-        bridge.sinkThread = nullptr;
-    }
+    cleanup();
 
     return ret;
 }

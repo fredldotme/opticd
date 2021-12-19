@@ -1,5 +1,6 @@
 #include "v4l2loopbacksink.h"
 
+#include <QDebug>
 #include <QFile>
 #include <QThread>
 
@@ -20,6 +21,7 @@ V4L2LoopbackSink::V4L2LoopbackSink(size_t width,
     m_width(width),
     m_height(height)
 {
+    qInfo() << m_description << m_width << m_height;
 }
 
 V4L2LoopbackSink::~V4L2LoopbackSink()
@@ -39,7 +41,7 @@ void V4L2LoopbackSink::addLoopbackDevice()
     snprintf(cfg.card_label, 32, "%s", this->m_description.toUtf8().data());
     cfg.capture_nr = -1;
     cfg.output_nr = -1;
-    cfg.announce_all_caps = 1;
+    cfg.announce_all_caps = 0;
     cfg.max_width = this->m_width;
     cfg.max_height = this->m_height;
     cfg.max_buffers = 2;
@@ -54,6 +56,7 @@ void V4L2LoopbackSink::addLoopbackDevice()
 
     this->m_path = QStringLiteral("/dev/video%1").arg(ret);
     this->m_deviceNumber = ret;
+    //this->m_vidsendsiz = this->m_width * this->m_height * 3 / 2;
     this->m_vidsendsiz = this->m_width * this->m_height * 3;
     close(fd);
 
@@ -114,7 +117,7 @@ void V4L2LoopbackSink::openLoopbackDevice()
 
 void V4L2LoopbackSink::pushCapture(QByteArray capture)
 {
-    qDebug("Pushing capture");
+    //qDebug("Pushing capture");
     if (int written = write(this->m_sinkFd, capture.data(), capture.size()) != m_vidsendsiz) {
         qWarning("Failed to push captured frame, wrote %d/%d bytes, capture size %d", written, m_vidsendsiz, capture.size());
     }
