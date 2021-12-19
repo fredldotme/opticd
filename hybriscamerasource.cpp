@@ -60,24 +60,8 @@ static void readTextureIntoBuffer(void* ctx)
 {
     HybrisCameraSource* thiz = static_cast<HybrisCameraSource*>(ctx);
 
-    QMutexLocker locker(thiz->bufferMutex());
-
-    eglMakeCurrent(thiz->eglDisplay(), EGL_NO_SURFACE, EGL_NO_SURFACE, thiz->eglContext());
-    GLuint prevFbo;
-    glGetIntegerv(GL_FRAMEBUFFER_BINDING, (GLint *) &prevFbo);
-
-    glBindFramebuffer(GL_FRAMEBUFFER, thiz->fbo());
-    glBindTexture(GL_TEXTURE_2D, thiz->texture());
-
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, thiz->texture(), 0);
-
-    const size_t rgbaSize = thiz->width() * thiz->height() * 4;
-    glReadPixels(0, 0, thiz->width(), thiz->height(), GL_RGBA, GL_UNSIGNED_BYTE, thiz->intermediateBuffer());
-    glBindFramebuffer(GL_FRAMEBUFFER, prevFbo);
-    removeAlpha(thiz->intermediateBuffer(), thiz->pixelBuffer(), rgbaSize);
-
-    QMetaObject::invokeMethod(thiz, "updatePreview", Qt::QueuedConnection);
     QMetaObject::invokeMethod(thiz, "requestFrame", Qt::QueuedConnection);
+    QMetaObject::invokeMethod(thiz, "updatePreview", Qt::QueuedConnection);
 }
 
 static void setPreviewSize(void* ctx, int width, int height)
@@ -205,6 +189,21 @@ void HybrisCameraSource::start()
 void HybrisCameraSource::requestFrame()
 {
     QMutexLocker locker(&this->m_bufferMutex);
+
+    eglMakeCurrent(this->eglDisplay(), EGL_NO_SURFACE, EGL_NO_SURFACE, this->eglContext());
+    GLuint prevFbo;
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, (GLint *) &prevFbo);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, this->fbo());
+    glBindTexture(GL_TEXTURE_2D, this->texture());
+
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, this->texture(), 0);
+
+    const size_t rgbaSize = this->width() * this->height() * 4;
+    glReadPixels(0, 0, this->width(), this->height(), GL_RGBA, GL_UNSIGNED_BYTE, this->intermediateBuffer());
+    glBindFramebuffer(GL_FRAMEBUFFER, prevFbo);
+    removeAlpha(this->intermediateBuffer(), this->pixelBuffer(), rgbaSize);
+
     emit captured(this->m_pixelBuffer);
 }
 
