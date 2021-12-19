@@ -56,7 +56,6 @@ void V4L2LoopbackSink::addLoopbackDevice()
 
     this->m_path = QStringLiteral("/dev/video%1").arg(ret);
     this->m_deviceNumber = ret;
-    //this->m_vidsendsiz = this->m_width * this->m_height * 3 / 2;
     this->m_vidsendsiz = this->m_width * this->m_height * 3;
     close(fd);
 

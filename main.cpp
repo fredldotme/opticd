@@ -64,7 +64,7 @@ int main(int argc, char *argv[])
                                                       source->height(),
                                                       cameraInfo.description);
 
-        // Open and close device on demand
+        // TODO: Open and close device on demand
         QObject::connect(sink, &V4L2LoopbackSink::deviceOpened,
                          source, &HybrisCameraSource::start);
         QObject::connect(sink, &V4L2LoopbackSink::deviceClosed,

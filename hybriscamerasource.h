@@ -44,6 +44,7 @@ public:
     EGLDisplay eglDisplay();
     GLuint fbo();
     GLuint texture();
+    uint8_t* intermediateBuffer();
     uint8_t* pixelBuffer();
     QMutex* bufferMutex();
 
@@ -51,12 +52,13 @@ private:
     CameraControl* m_control = nullptr;
     CameraControlListener* m_listener = nullptr;
 
-    size_t m_width;
-    size_t m_height;
+    size_t m_width = 0;
+    size_t m_height = 0;
     short m_fps;
     GLuint m_fbo;
     GLuint m_texture;
     QMutex m_bufferMutex;
+    QByteArray m_intermediateBuffer;
     QByteArray m_pixelBuffer;
     EGLContext m_eglContext;
     EGLDisplay m_eglDisplay;

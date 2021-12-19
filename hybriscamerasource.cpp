@@ -37,6 +37,8 @@ QVector<HybrisCameraInfo> HybrisCameraSource::availableCameras()
             break;
         }
 
+        qDebug() << "Found camera:" << info.description << "orientation:" << info.orientation;
+
         info.id = id;
         ret.push_back(info);
     }
@@ -70,12 +72,9 @@ static void readTextureIntoBuffer(void* ctx)
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, thiz->texture(), 0);
 
     const size_t rgbaSize = thiz->width() * thiz->height() * 4;
-    uint8_t* rgbaBuffer = new uint8_t[rgbaSize];
-    glReadPixels(0, 0, thiz->width(), thiz->height(), GL_RGBA, GL_UNSIGNED_BYTE, rgbaBuffer);
+    glReadPixels(0, 0, thiz->width(), thiz->height(), GL_RGBA, GL_UNSIGNED_BYTE, thiz->intermediateBuffer());
     glBindFramebuffer(GL_FRAMEBUFFER, prevFbo);
-    removeAlpha(rgbaBuffer, thiz->pixelBuffer(), rgbaSize);
-
-    delete[] rgbaBuffer;
+    removeAlpha(thiz->intermediateBuffer(), thiz->pixelBuffer(), rgbaSize);
 
     QMetaObject::invokeMethod(thiz, "updatePreview", Qt::QueuedConnection);
     QMetaObject::invokeMethod(thiz, "requestFrame", Qt::QueuedConnection);
@@ -108,9 +107,15 @@ HybrisCameraSource::HybrisCameraSource(HybrisCameraInfo info, EGLContext context
 
     android_camera_enumerate_supported_preview_sizes(this->m_control, &setPreviewSize, this);
     android_camera_set_preview_size(this->m_control, this->width(), this->height());
-    //this->m_pixelBuffer = new uint8_t[this->width() * this->height() * 3 / 2];
-    //this->m_pixelBuffer = new uint8_t[this->width() * this->height() * 3];
+
+    this->m_intermediateBuffer.resize(this->width() * this->height() * 4);
     this->m_pixelBuffer.resize(this->width() * this->height() * 3);
+
+    int min, max;
+    android_camera_get_preview_fps_range(this->m_control, &min, &max);
+    android_camera_set_preview_fps(this->m_control, min);
+    android_camera_set_preview_callback_mode(this->m_control, PREVIEW_CALLBACK_ENABLED);
+
     android_camera_set_preview_format(this->m_control, CAMERA_PIXEL_FORMAT_RGBA8888);
     provideFramebuffer(&this->m_fbo);
     provideTexture(&this->m_texture);
@@ -133,6 +138,12 @@ HybrisCameraSource::~HybrisCameraSource()
 
 void HybrisCameraSource::setSize(const size_t &width, const size_t &height)
 {
+    if (width > 1920 && height > 1080)
+        return;
+
+    if (width <= this->m_width && height <= this->m_height)
+        return;
+
     this->m_width = width;
     this->m_height = height;
 }
@@ -167,6 +178,11 @@ GLuint HybrisCameraSource::texture()
     return this->m_texture;
 }
 
+uint8_t* HybrisCameraSource::intermediateBuffer()
+{
+    return (uint8_t*)this->m_intermediateBuffer.data();
+}
+
 uint8_t* HybrisCameraSource::pixelBuffer()
 {
     return (uint8_t*)this->m_pixelBuffer.data();
@@ -183,7 +199,6 @@ void HybrisCameraSource::start()
         return;
 
     qDebug() << "Starting camera";
-    android_camera_set_preview_fps(this->m_control, 30);
     android_camera_start_preview(this->m_control);
 }
 
