@@ -102,8 +102,18 @@ HybrisCameraSource::HybrisCameraSource(HybrisCameraInfo info, EGLContext context
     android_camera_set_preview_callback_mode(this->m_control, PREVIEW_CALLBACK_ENABLED);
 
     android_camera_set_preview_format(this->m_control, CAMERA_PIXEL_FORMAT_RGBA8888);
-    provideFramebuffer(&this->m_fbo);
     provideTexture(&this->m_texture);
+    provideFramebuffer(&this->m_fbo);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, this->fbo());
+    qDebug() << "2" << glGetError();
+
+    glBindTexture(GL_TEXTURE_2D, this->texture());
+    qDebug() << "3" << glGetError();
+
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, this->texture(), 0);
+    qDebug() << "4" << glGetError();
+
     android_camera_set_preview_texture(this->m_control, this->texture());
 }
 
@@ -192,18 +202,29 @@ void HybrisCameraSource::requestFrame()
 {
     QMutexLocker locker(&this->m_bufferMutex);
 
-    eglMakeCurrent(this->eglDisplay(), this->m_eglSurface, this->m_eglSurface, this->eglContext());
+    const bool mcSuccess = eglMakeCurrent(this->eglDisplay(), this->m_eglSurface, this->m_eglSurface, this->eglContext());
+    if (!mcSuccess) {
+        qWarning() << "Failed to make current" << eglGetError();
+        return;
+    }
 
     GLuint prevFbo;
     glGetIntegerv(GL_FRAMEBUFFER_BINDING, (GLint *) &prevFbo);
+    qDebug() << "1" << glGetError();
 
     glBindFramebuffer(GL_FRAMEBUFFER, this->fbo());
+    qDebug() << "2" << glGetError();
+
     glBindTexture(GL_TEXTURE_2D, this->texture());
+    qDebug() << "3" << glGetError();
 
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, this->texture(), 0);
+    qDebug() << "4" << glGetError();
 
     const size_t rgbaSize = this->width() * this->height() * 4;
     glReadPixels(0, 0, this->width(), this->height(), GL_RGBA, GL_UNSIGNED_BYTE, this->intermediateBuffer());
+    qDebug() << "5" << glGetError();
+
     glBindFramebuffer(GL_FRAMEBUFFER, prevFbo);
     removeAlpha(this->intermediateBuffer(), this->pixelBuffer(), rgbaSize);
 
