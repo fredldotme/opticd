@@ -44,10 +44,11 @@ int main(int argc, char *argv[])
 {
     EGLDisplay display;
     EGLContext context;
+    EGLSurface surface;
 
     QCoreApplication a(argc, argv);
 
-    bool initSuccess = initEgl(&context, &display);
+    bool initSuccess = initEgl(&context, &display, &surface);
     if (!initSuccess) {
         qWarning() << "EGL not initialized";
         return 1;
@@ -59,7 +60,8 @@ int main(int argc, char *argv[])
     for (const HybrisCameraInfo &cameraInfo : HybrisCameraSource::availableCameras()) {
         HybrisCameraSource* source = new HybrisCameraSource(cameraInfo,
                                                             context,
-                                                            display);
+                                                            display,
+                                                            surface);
         V4L2LoopbackSink* sink = new V4L2LoopbackSink(source->width(),
                                                       source->height(),
                                                       cameraInfo.description);

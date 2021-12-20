@@ -5,7 +5,7 @@
 #include <EGL/egl.h>
 #include <GLES2/gl2.h>
 
-bool initEgl(EGLContext* eglContext, EGLDisplay* eglDisplay);
+bool initEgl(EGLContext* eglContext, EGLDisplay* eglDisplay, EGLSurface* eglSurface);
 void provideFramebuffer(GLuint* fbo);
 void provideTexture(GLuint* texture);
 

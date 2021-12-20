@@ -50,9 +50,8 @@ static void removeAlpha(uint8_t* from, uint8_t* to, size_t fromLength)
 {
     size_t toLength = 0;
     for (int i = 0; i < fromLength; i++) {
-        to[toLength] = from[i];
-        if (i % 3 == 0)
-            ++toLength;
+        if (i % 4 == 3) continue;
+        to[toLength++] = from[i];
     }
 }
 
@@ -71,11 +70,13 @@ static void setPreviewSize(void* ctx, int width, int height)
     thiz->setSize(width, height);
 }
 
-HybrisCameraSource::HybrisCameraSource(HybrisCameraInfo info, EGLContext context, EGLDisplay display, QObject *parent) :
+HybrisCameraSource::HybrisCameraSource(HybrisCameraInfo info, EGLContext context,
+                                       EGLDisplay display, EGLSurface surface, QObject *parent) :
     QObject(parent),
     m_listener(new CameraControlListener),
     m_eglContext(context),
-    m_eglDisplay(display)
+    m_eglDisplay(display),
+    m_eglSurface(surface)
 {
     if (info.id < 0)
         return;
@@ -122,7 +123,8 @@ HybrisCameraSource::~HybrisCameraSource()
 
 void HybrisCameraSource::setSize(const size_t &width, const size_t &height)
 {
-    if (width > 1920 && height > 1080)
+    // Don't support anything higher than 720p for now
+    if (width > 1280 || height > 720)
         return;
 
     if (width <= this->m_width && height <= this->m_height)
@@ -190,7 +192,8 @@ void HybrisCameraSource::requestFrame()
 {
     QMutexLocker locker(&this->m_bufferMutex);
 
-    eglMakeCurrent(this->eglDisplay(), EGL_NO_SURFACE, EGL_NO_SURFACE, this->eglContext());
+    eglMakeCurrent(this->eglDisplay(), this->m_eglSurface, this->m_eglSurface, this->eglContext());
+
     GLuint prevFbo;
     glGetIntegerv(GL_FRAMEBUFFER_BINDING, (GLint *) &prevFbo);
 

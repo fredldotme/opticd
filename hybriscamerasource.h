@@ -29,6 +29,7 @@ public:
     explicit HybrisCameraSource(HybrisCameraInfo info = HybrisCameraInfo(),
                                 EGLContext eglContext = EGL_NO_CONTEXT,
                                 EGLDisplay eglDisplay = EGL_NO_DISPLAY,
+                                EGLSurface eglSurface = EGL_NO_SURFACE,
                                 QObject *parent = nullptr);
     ~HybrisCameraSource();
     void start();
@@ -62,6 +63,7 @@ private:
     QByteArray m_pixelBuffer;
     EGLContext m_eglContext;
     EGLDisplay m_eglDisplay;
+    EGLSurface m_eglSurface;
 
 signals:
     void captured(QByteArray frame);
