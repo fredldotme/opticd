@@ -72,6 +72,8 @@ int main(int argc, char *argv[])
         QObject::connect(sink, &V4L2LoopbackSink::deviceClosed,
                          source, &HybrisCameraSource::stop);
 
+        // TODO: Only produce frames when the PID is allowed to access the camera
+
         // Frame passing through two-way communication between sink and source
         QObject::connect(sink, &V4L2LoopbackSink::frameRequested,
                          source, &HybrisCameraSource::requestFrame, Qt::DirectConnection);
