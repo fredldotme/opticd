@@ -60,7 +60,6 @@ static void readTextureIntoBuffer(void* ctx)
     HybrisCameraSource* thiz = static_cast<HybrisCameraSource*>(ctx);
 
     QMetaObject::invokeMethod(thiz, "requestFrame", Qt::QueuedConnection);
-    QMetaObject::invokeMethod(thiz, "updatePreview", Qt::QueuedConnection);
 }
 
 static void setPreviewSize(void* ctx, int width, int height)
@@ -93,6 +92,7 @@ HybrisCameraSource::HybrisCameraSource(HybrisCameraInfo info, EGLContext context
     android_camera_enumerate_supported_preview_sizes(this->m_control, &setPreviewSize, this);
     android_camera_set_preview_size(this->m_control, this->width(), this->height());
 
+    this->m_intermediateBuffer.resize(this->width() * this->height() * 4);
     this->m_pixelBuffer.resize(this->width() * this->height() * 3);
 
     int min, max;
@@ -101,19 +101,19 @@ HybrisCameraSource::HybrisCameraSource(HybrisCameraInfo info, EGLContext context
     android_camera_set_preview_callback_mode(this->m_control, PREVIEW_CALLBACK_ENABLED);
 
     android_camera_set_preview_format(this->m_control, CAMERA_PIXEL_FORMAT_RGBA8888);
-    provideTexture(&this->m_texture);
+    provideExternalTexture(&this->m_texture);
     provideFramebuffer(&this->m_fbo);
 
-    glBindFramebuffer(GL_FRAMEBUFFER, this->fbo());
+    glBindFramebuffer(GL_FRAMEBUFFER, this->m_fbo);
     qDebug() << "2" << glGetError();
 
-    glBindTexture(GL_TEXTURE_2D, this->texture());
+    glBindTexture(GL_TEXTURE_EXTERNAL_OES, this->m_texture);
     qDebug() << "3" << glGetError();
 
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, this->texture(), 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_EXTERNAL_OES, this->m_texture, 0);
     qDebug() << "4" << glGetError();
 
-    android_camera_set_preview_texture(this->m_control, this->texture());
+    android_camera_set_preview_texture(this->m_control, this->m_texture);
 }
 
 HybrisCameraSource::~HybrisCameraSource()
@@ -153,31 +153,6 @@ size_t HybrisCameraSource::height()
     return this->m_height;
 }
 
-EGLContext HybrisCameraSource::eglContext()
-{
-    return this->m_eglContext;
-}
-
-EGLDisplay HybrisCameraSource::eglDisplay()
-{
-    return this->m_eglDisplay;
-}
-
-GLuint HybrisCameraSource::fbo()
-{
-    return this->m_fbo;
-}
-
-GLuint HybrisCameraSource::texture()
-{
-    return this->m_texture;
-}
-
-uint8_t* HybrisCameraSource::pixelBuffer()
-{
-    return (uint8_t*)this->m_pixelBuffer.data();
-}
-
 QMutex* HybrisCameraSource::bufferMutex()
 {
     return &this->m_bufferMutex;
@@ -196,30 +171,35 @@ void HybrisCameraSource::requestFrame()
 {
     QMutexLocker locker(&this->m_bufferMutex);
 
-    const bool mcSuccess = eglMakeCurrent(this->eglDisplay(), this->m_eglSurface, this->m_eglSurface, this->eglContext());
+    const bool mcSuccess = eglMakeCurrent(this->m_eglDisplay, this->m_eglSurface, this->m_eglSurface, this->m_eglContext);
     if (!mcSuccess) {
         qWarning() << "Failed to make current" << eglGetError();
         return;
     }
 
-    GLuint prevFbo;
-    glGetIntegerv(GL_FRAMEBUFFER_BINDING, (GLint *) &prevFbo);
+    glActiveTexture(GL_TEXTURE1);
     qDebug() << "1" << glGetError();
 
-    glBindFramebuffer(GL_FRAMEBUFFER, this->fbo());
-    qDebug() << "2" << glGetError();
+    android_camera_update_preview_texture(this->m_control);
 
-    glBindTexture(GL_TEXTURE_2D, this->texture());
+    glBindFramebuffer(GL_FRAMEBUFFER, this->m_fbo);
+    qDebug() << "2" << glGetError() << (glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE);
+
+    glBindTexture(GL_TEXTURE_EXTERNAL_OES, this->m_texture);
     qDebug() << "3" << glGetError();
 
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, this->texture(), 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_EXTERNAL_OES, this->m_texture, 0);
     qDebug() << "4" << glGetError();
 
-    glReadPixels(0, 0, this->width(), this->height(), GL_RGB, GL_UNSIGNED_BYTE, this->pixelBuffer());
+    glReadPixels(0, 0, this->width(), this->height(), GL_RGBA, GL_UNSIGNED_BYTE, (char*)this->m_intermediateBuffer.data());
     qDebug() << "5" << glGetError();
 
-    glBindFramebuffer(GL_FRAMEBUFFER, prevFbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    qDebug() << "6" << glGetError();
 
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    removeAlpha((uint8_t*)this->m_intermediateBuffer.data(), (uint8_t*)this->m_pixelBuffer.data(), this->m_intermediateBuffer.length());
     emit captured(this->m_pixelBuffer);
 }
 
@@ -229,12 +209,4 @@ void HybrisCameraSource::stop()
         return;
 
     android_camera_stop_preview(this->m_control);
-}
-
-void HybrisCameraSource::updatePreview()
-{
-    if (!this->m_control)
-        return;
-
-    android_camera_update_preview_texture(this->m_control);
 }

@@ -35,18 +35,11 @@ public:
     void start();
     void stop();
     Q_INVOKABLE void requestFrame();
-    Q_INVOKABLE void updatePreview();
 
     void setSize(const size_t& width, const size_t& height);
     size_t width();
     size_t height();
 
-    EGLContext eglContext();
-    EGLDisplay eglDisplay();
-    GLuint fbo();
-    GLuint texture();
-    uint8_t* intermediateBuffer();
-    uint8_t* pixelBuffer();
     QMutex* bufferMutex();
 
 private:
@@ -59,6 +52,7 @@ private:
     GLuint m_fbo;
     GLuint m_texture;
     QMutex m_bufferMutex;
+    QByteArray m_intermediateBuffer;
     QByteArray m_pixelBuffer;
     EGLContext m_eglContext;
     EGLDisplay m_eglDisplay;
