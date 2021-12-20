@@ -105,13 +105,8 @@ HybrisCameraSource::HybrisCameraSource(HybrisCameraInfo info, EGLContext context
     provideFramebuffer(&this->m_fbo);
 
     glBindFramebuffer(GL_FRAMEBUFFER, this->m_fbo);
-    qDebug() << "2" << glGetError();
-
     glBindTexture(GL_TEXTURE_EXTERNAL_OES, this->m_texture);
-    qDebug() << "3" << glGetError();
-
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_EXTERNAL_OES, this->m_texture, 0);
-    qDebug() << "4" << glGetError();
 
     android_camera_set_preview_texture(this->m_control, this->m_texture);
 }
@@ -178,25 +173,14 @@ void HybrisCameraSource::requestFrame()
     }
 
     glActiveTexture(GL_TEXTURE1);
-    qDebug() << "1" << glGetError();
 
     android_camera_update_preview_texture(this->m_control);
 
     glBindFramebuffer(GL_FRAMEBUFFER, this->m_fbo);
-    qDebug() << "2" << glGetError() << (glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE);
-
     glBindTexture(GL_TEXTURE_EXTERNAL_OES, this->m_texture);
-    qDebug() << "3" << glGetError();
-
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_EXTERNAL_OES, this->m_texture, 0);
-    qDebug() << "4" << glGetError();
-
     glReadPixels(0, 0, this->width(), this->height(), GL_RGBA, GL_UNSIGNED_BYTE, (char*)this->m_intermediateBuffer.data());
-    qDebug() << "5" << glGetError();
-
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    qDebug() << "6" << glGetError();
-
     glBindTexture(GL_TEXTURE_2D, 0);
 
     removeAlpha((uint8_t*)this->m_intermediateBuffer.data(), (uint8_t*)this->m_pixelBuffer.data(), this->m_intermediateBuffer.length());
