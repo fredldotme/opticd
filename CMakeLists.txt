@@ -36,4 +36,4 @@ add_executable(opticd
 target_link_libraries(opticd Qt5::Core camera EGL GLESv2 ${MIRCLIENT_LDFLAGS})
 
 install(TARGETS opticd RUNTIME DESTINATION bin)
-install(FILES service/opticd.conf DESTINATION share/upstart/sessions/opticd.conf)
+install(FILES service/opticd.conf DESTINATION share/upstart/sessions)
