@@ -80,14 +80,15 @@ HybrisCameraSource::HybrisCameraSource(HybrisCameraInfo info, EGLContext context
     if (info.id < 0)
         return;
 
+    memset(this->m_listener, 0, sizeof(*this->m_listener));
+    this->m_listener->context = this;
+    this->m_listener->on_preview_texture_needs_update_cb = &readTextureIntoBuffer;
+
     this->m_control = android_camera_connect_by_id(info.id, this->m_listener);
     if (!this->m_control) {
         qWarning() << "Failed to connect to camera" << info.id << info.description;
         return;
     }
-
-    this->m_listener->context = this;
-    this->m_listener->on_preview_texture_needs_update_cb = &readTextureIntoBuffer;
 
     android_camera_enumerate_supported_preview_sizes(this->m_control, &setPreviewSize, this);
     android_camera_set_preview_size(this->m_control, this->width(), this->height());
