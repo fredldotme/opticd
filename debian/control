@@ -1,0 +1,17 @@
+Source: opticd
+Section: misc
+Priority: optional
+Maintainer: Alfred Neumayer <dev.beidl@gmail.com>
+Build-Depends: debhelper (>= 8.1.3),
+               cmake (>= 3.0.0),
+               qtbase5-dev,
+               libegl1-mesa-dev,
+               libgl1-mesa-dev,
+               libmirclient-dev
+Standards-Version: 3.8.4
+
+Package: opticd
+Section: misc
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Android-to-V4L2 camera bridge using v4l2loopback
