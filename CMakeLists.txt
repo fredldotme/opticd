@@ -22,15 +22,15 @@ include_directories(
 )
 
 add_executable(opticd
-  accessmediator.h
-  accessmediator.cpp
-  eglhelper.h
-  eglhelper.cpp
-  hybriscamerasource.h
-  hybriscamerasource.cpp
-  v4l2loopbacksink.h
-  v4l2loopbacksink.cpp
-  main.cpp
+  src/accessmediator.h
+  src/accessmediator.cpp
+  src/eglhelper.h
+  src/eglhelper.cpp
+  src/hybriscamerasource.h
+  src/hybriscamerasource.cpp
+  src/v4l2loopbacksink.h
+  src/v4l2loopbacksink.cpp
+  src/main.cpp
 )
 
 target_link_libraries(opticd Qt5::Core camera EGL GLESv2 ${MIRCLIENT_LDFLAGS})
