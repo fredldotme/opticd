@@ -4,12 +4,5 @@
 # Uncomment this to turn on verbose mode.
 #export DH_VERBOSE=1
 
-override_dh_auto_build:
-	dh_auto_build -- release
-
-override_dh_auto_configure:
-	dh_auto_configure -- \
-	-DCMAKE_LIBRARY_PATH=$(DEB_HOST_MULTIARCH)
-
 %:
 	dh $@
