@@ -3,21 +3,15 @@
 
 #include <QObject>
 #include <QVector>
-#include <QThread>
 
 class AccessMediator : public QObject
 {
     Q_OBJECT
 public:
     explicit AccessMediator(QObject *parent = nullptr);
-    ~AccessMediator();
 
 private:
-    void runLoop();
     QVector<quint64> findUsingPids(const QString& device);
-
-    QThread* m_loopThread;
-    bool m_running;
 
 signals:
     void permitted(const quint64 pid);
