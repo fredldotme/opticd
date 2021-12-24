@@ -5,7 +5,16 @@
 #include <QThread>
 #include <QVector>
 
+#include <map>
 #include <set>
+
+struct TrackingInfo {
+    ~TrackingInfo() {
+        qDebug("Tracking info removed with %d open accesses",
+               openFds.load(std::memory_order_acquire));
+    }
+    std::atomic<int> openFds;
+};
 
 class AccessMediator : public QObject
 {
@@ -26,7 +35,7 @@ private:
     QThread* m_notifyThread;
     int m_notifyFd;
     std::set<int> m_watchers;
-    std::set<QString> m_devices;
+    std::map<const QString, TrackingInfo*> m_devices;
 
 signals:
     void permitted(const quint64 pid);
