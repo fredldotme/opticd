@@ -190,5 +190,6 @@ void HybrisCameraSource::stop()
     if (!this->m_control)
         return;
 
+    qDebug() << "Stopping camera";
     android_camera_stop_preview(this->m_control);
 }

@@ -48,6 +48,29 @@ AccessMediator::~AccessMediator()
     close(this->m_notifyFd);
 }
 
+static inline bool hasSamePids(
+        const std::vector<quint64>& first,
+        const std::vector<quint64>& second)
+{
+    for (const quint64& pid1 : first) {
+        for (const quint64 pid2 : second)
+            if (pid1 != pid2)
+                return false;
+    }
+    return true;
+}
+
+static inline bool hasNewPids(
+        const std::vector<quint64>& oldPids,
+        const std::vector<quint64>& newPids)
+{
+    for (const quint64& pid : newPids) {
+        if (std::find(oldPids.begin(), oldPids.end(), pid) == oldPids.end())
+            return true;
+    }
+    return false;
+}
+
 void AccessMediator::runNotificationLoop()
 {
     fd_set set;
@@ -88,26 +111,36 @@ void AccessMediator::runNotificationLoop()
 
             const QString deviceName = QStringLiteral("/dev/%1").arg(event->name);
 
+            // Skip devices we don't manage
             if (this->m_devices.find(deviceName) == this->m_devices.end()) {
                 i += (EVENT_SIZE+event->len);
                 continue;
             }
 
+            // Skip those events that would cancel each other out
+            // Don't know if those exist, but let's be safe
+            if (event->mask & IN_OPEN && event->mask & IN_CLOSE) {
+                i += (EVENT_SIZE+event->len);
+                continue;
+            }
+
+            const std::vector<quint64> openPids = this->m_devices[deviceName]->runningPids;
+            const std::vector<quint64> pids = findUsingPids(deviceName);
+
             // Do the pid matching now
             if (event->mask & IN_OPEN) {
-                const QVector<quint64> pids = findUsingPids(deviceName);
-
-                // Only allow access if there is an actual PID using the device
-                if (!pids.isEmpty()) {
+                qDebug() << "Device accessed by:" << pids;
+                this->m_devices[deviceName]->runningPids = pids;
+                if (pids.size() >= 1) {
                     qInfo("Access allowed for %s", deviceName.toUtf8().data());
-                    int count = (this->m_devices[deviceName]->openFds += 1);
                     emit accessAllowed(deviceName);
                 }
             } else if (event->mask & IN_CLOSE) {
-                qInfo("Device %s closed", deviceName.toUtf8().data());
-                int count = (this->m_devices[deviceName]->openFds -= 1);
-                if (count == 0)
+                this->m_devices[deviceName]->runningPids = pids;
+                if (pids.size() <= 0) {
+                    qInfo("Device %s closed with open count %d", deviceName.toUtf8().data(), pids.size());
                     emit deviceClosed(deviceName);
+                }
             }
 
             i += (EVENT_SIZE+event->len);
@@ -126,9 +159,9 @@ static int separatorsInPath(const QString& path)
     return ret;
 }
 
-QVector<quint64> AccessMediator::findUsingPids(const QString &device)
+std::vector<quint64> AccessMediator::findUsingPids(const QString &device)
 {    
-    QVector<quint64> pids;
+    std::vector<quint64> pids;
 
     DIR *proc = opendir("/proc");
     struct dirent* procContents;
@@ -173,6 +206,7 @@ QVector<quint64> AccessMediator::findUsingPids(const QString &device)
 
             pids.push_back(atoi(procContents->d_name));
         }
+
         closedir(procFd);
     }
 

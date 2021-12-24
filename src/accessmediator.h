@@ -3,17 +3,17 @@
 
 #include <QObject>
 #include <QThread>
-#include <QVector>
 
 #include <map>
 #include <set>
+#include <vector>
 
 struct TrackingInfo {
     ~TrackingInfo() {
         qDebug("Tracking info removed with %d open accesses",
-               openFds.load(std::memory_order_acquire));
+               runningPids.size());
     }
-    std::atomic<int> openFds;
+    std::vector<quint64> runningPids; // TODO: turn this into a set
 };
 
 class AccessMediator : public QObject
@@ -29,7 +29,7 @@ public slots:
 
 private:
     void runNotificationLoop();
-    QVector<quint64> findUsingPids(const QString& device);
+    std::vector<quint64> findUsingPids(const QString& device);
 
     bool m_running;
     QThread* m_notifyThread;
