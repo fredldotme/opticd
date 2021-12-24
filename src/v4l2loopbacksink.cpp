@@ -64,7 +64,7 @@ void V4L2LoopbackSink::addLoopbackDevice()
     // Let udev settle
     QThread::sleep(1);
 
-    emit deviceOpened();
+    emit deviceCreated(this->m_path);
 }
 
 void V4L2LoopbackSink::deleteLoopbackDevice()
@@ -82,7 +82,7 @@ void V4L2LoopbackSink::deleteLoopbackDevice()
 
     qInfo("v4l2sink device '%s' deleted", this->m_path.toUtf8().data());
     close(this->m_sinkFd);
-    emit deviceClosed();
+    emit deviceRemoved(this->m_path);
 }
 
 void V4L2LoopbackSink::openLoopbackDevice()
@@ -122,9 +122,17 @@ void V4L2LoopbackSink::pushCapture(QByteArray capture)
     }
 }
 
+void V4L2LoopbackSink::feedDummyFrame()
+{
+    QByteArray fummy;
+    fummy.resize(this->m_vidsendsiz);
+    pushCapture(fummy);
+}
+
 void V4L2LoopbackSink::run()
 {
     addLoopbackDevice();
     openLoopbackDevice();
+    feedDummyFrame();
 }
 

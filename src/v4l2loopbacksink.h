@@ -20,6 +20,7 @@ private:
     void addLoopbackDevice();
     void openLoopbackDevice();
     void deleteLoopbackDevice();
+    void feedDummyFrame();
 
     QString m_path;
     QString m_description;
@@ -30,9 +31,8 @@ private:
     int m_vidsendsiz = 0;
 
 signals:
-    void deviceOpened();
-    void deviceClosed();
-    void frameRequested();
+    void deviceCreated(const QString path);
+    void deviceRemoved(const QString path);
 
 };
 

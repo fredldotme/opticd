@@ -22,9 +22,6 @@ QVector<HybrisCameraInfo> HybrisCameraSource::availableCameras()
         if (status != ANDROID_OK)
             continue;
 
-        if (info.facingDirection == BACK_FACING_CAMERA_TYPE)
-            continue;
-
         switch(info.facingDirection) {
         case FRONT_FACING_CAMERA_TYPE:
             info.description = DESCRIPTION_FRONT;

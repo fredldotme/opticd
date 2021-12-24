@@ -34,13 +34,15 @@ QMutex cleanupMutex;
 
 static void cleanup()
 {
-    // Stop bridges after quit is requested
+    // Stop bridges after quit is requested.
+    // Stop the source first as destroying the video node while frames
+    // are being fed into it won't allow deletion of the sink.
     QMutexLocker locker(&cleanupMutex);
     for (SourceSinkPair& bridge : bridges) {
-        delete bridge.sink;
-        bridge.sink = nullptr;
         delete bridge.source;
         bridge.source = nullptr;
+        delete bridge.sink;
+        bridge.sink = nullptr;
     }
 }
 
@@ -202,17 +204,19 @@ int main(int argc, char *argv[])
                                                       source->height(),
                                                       cameraInfo.description);
 
-        // TODO: Open and close device on demand
-        QObject::connect(sink, &V4L2LoopbackSink::deviceOpened,
+        // Register created device with the mediator
+        QObject::connect(sink, &V4L2LoopbackSink::deviceCreated,
+                         &mediator, &AccessMediator::registerDevice);
+        QObject::connect(sink, &V4L2LoopbackSink::deviceRemoved,
+                         &mediator, &AccessMediator::unregisterDevice);
+
+        // Cause open() on devices to start frame feed
+        QObject::connect(&mediator, &AccessMediator::accessAllowed,
                          source, &HybrisCameraSource::start);
-        QObject::connect(sink, &V4L2LoopbackSink::deviceClosed,
+        QObject::connect(&mediator, &AccessMediator::deviceClosed,
                          source, &HybrisCameraSource::stop);
 
-        // TODO: Only produce frames when the PID is allowed to access the camera
-
-        // Frame passing through two-way communication between sink and source
-        QObject::connect(sink, &V4L2LoopbackSink::frameRequested,
-                         source, &HybrisCameraSource::requestFrame, Qt::DirectConnection);
+        // Frame passing through one-way communication from source to sink
         QObject::connect(source, &HybrisCameraSource::captured,
                          sink, &V4L2LoopbackSink::pushCapture, Qt::DirectConnection);
 
