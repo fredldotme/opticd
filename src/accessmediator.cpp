@@ -128,16 +128,13 @@ void AccessMediator::runNotificationLoop()
             const std::vector<quint64> pids = findUsingPids(deviceName);
 
             // Do the pid matching now
-            if (event->mask & IN_OPEN) {
-                qDebug() << "Device accessed by:" << pids;
+            if (event->mask & IN_OPEN || event->mask & IN_CLOSE) {
                 this->m_devices[deviceName]->runningPids = pids;
                 if (pids.size() >= 1) {
+                    qDebug() << "Device accessed by:" << pids;
                     qInfo("Access allowed for %s", deviceName.toUtf8().data());
                     emit accessAllowed(deviceName);
-                }
-            } else if (event->mask & IN_CLOSE) {
-                this->m_devices[deviceName]->runningPids = pids;
-                if (pids.size() <= 0) {
+                } else {
                     qInfo("Device %s closed with open count %d", deviceName.toUtf8().data(), pids.size());
                     emit deviceClosed(deviceName);
                 }

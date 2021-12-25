@@ -6,6 +6,7 @@
 #include <QDebug>
 #include <QMutex>
 #include <QString>
+#include <QTimer>
 
 #include <hybris/camera/camera_compatibility_layer.h>
 #include <hybris/camera/camera_compatibility_layer_capabilities.h>
@@ -42,6 +43,10 @@ public:
 
     QMutex* bufferMutex();
 
+private slots:
+    void queueStart();
+    void queueDelayedStop();
+
 private:
     CameraControl* m_control = nullptr;
     CameraControlListener* m_listener = nullptr;
@@ -57,6 +62,7 @@ private:
     EGLContext m_eglContext;
     EGLDisplay m_eglDisplay;
     EGLSurface m_eglSurface;
+    QTimer m_stopDelayer;
 
 signals:
     void captured(QByteArray frame);

@@ -87,6 +87,19 @@ HybrisCameraSource::HybrisCameraSource(HybrisCameraInfo info, EGLContext context
         return;
     }
 
+    // Delay stop of frame production
+    // Applications tend to query the device and only see it as valid when
+    // it receives frames from the V4L2 device.
+    // To have repeated accesses not be disturbed, just delay stopping of the
+    // actual feed.
+    this->m_stopDelayer.setSingleShot(true);
+    this->m_stopDelayer.setInterval(3000);
+    QObject::connect(&this->m_stopDelayer, &QTimer::timeout,
+                     this, [=](){
+        qDebug() << "... stopping camera now!";
+        android_camera_stop_preview(this->m_control);
+    });
+
     android_camera_enumerate_supported_preview_sizes(this->m_control, &setPreviewSize, this);
     android_camera_set_preview_size(this->m_control, this->width(), this->height());
 
@@ -156,6 +169,13 @@ void HybrisCameraSource::start()
     if (!this->m_control)
         return;
 
+    QMetaObject::invokeMethod(this, "queueStart", Qt::QueuedConnection);
+}
+
+void HybrisCameraSource::queueStart()
+{
+    this->m_stopDelayer.stop();
+
     qDebug() << "Starting camera";
     android_camera_start_preview(this->m_control);
 }
@@ -190,6 +210,12 @@ void HybrisCameraSource::stop()
     if (!this->m_control)
         return;
 
-    qDebug() << "Stopping camera";
-    android_camera_stop_preview(this->m_control);
+    QMetaObject::invokeMethod(this, "queueDelayedStop", Qt::QueuedConnection);
+}
+
+void HybrisCameraSource::queueDelayedStop()
+{
+    qInfo() << "Stopping camera soon...";
+    this->m_stopDelayer.stop();
+    this->m_stopDelayer.start();
 }
