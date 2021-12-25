@@ -1,0 +1,1 @@
+ACTION=="add", KERNEL=="v4l2loopback", GROUP="video", MODE="0660"
