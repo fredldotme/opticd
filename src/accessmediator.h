@@ -2,6 +2,7 @@
 #define ACCESSMEDIATOR_H
 
 #include <QObject>
+#include <QTimer>
 #include <QThread>
 
 #include <map>
@@ -27,6 +28,10 @@ public slots:
     void registerDevice(const QString path);
     void unregisterDevice(const QString path);
 
+private slots:
+    void startDecisionMaking();
+    void accessDecision();
+
 private:
     void runNotificationLoop();
     std::vector<quint64> findUsingPids(const QString& device);
@@ -36,6 +41,7 @@ private:
     int m_notifyFd;
     std::set<int> m_watchers;
     std::map<const QString, TrackingInfo*> m_devices;
+    QTimer m_delayedDecision;
 
 signals:
     void permitted(const quint64 pid);

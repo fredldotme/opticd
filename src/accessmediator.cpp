@@ -33,6 +33,11 @@ AccessMediator::AccessMediator(QObject *parent) :
         return;
     }
 
+    this->m_delayedDecision.setSingleShot(true);
+    this->m_delayedDecision.setInterval(100);
+    QObject::connect(&this->m_delayedDecision, &QTimer::timeout,
+                     this, &AccessMediator::accessDecision);
+
     this->m_watchers.insert(watchFd);
 
     QObject::connect(this->m_notifyThread, &QThread::started,
@@ -124,20 +129,9 @@ void AccessMediator::runNotificationLoop()
                 continue;
             }
 
-            const std::vector<quint64> openPids = this->m_devices[deviceName]->runningPids;
-            const std::vector<quint64> pids = findUsingPids(deviceName);
-
-            // Do the pid matching now
+            // Start the decision making
             if (event->mask & IN_OPEN || event->mask & IN_CLOSE) {
-                this->m_devices[deviceName]->runningPids = pids;
-                if (pids.size() >= 1) {
-                    qDebug() << "Device accessed by:" << pids;
-                    qInfo("Access allowed for %s", deviceName.toUtf8().data());
-                    emit accessAllowed(deviceName);
-                } else {
-                    qInfo("Device %s closed with open count %d", deviceName.toUtf8().data(), pids.size());
-                    emit deviceClosed(deviceName);
-                }
+                QMetaObject::invokeMethod(this, "startDecisionMaking", Qt::QueuedConnection);
             }
 
             i += (EVENT_SIZE+event->len);
@@ -145,6 +139,32 @@ void AccessMediator::runNotificationLoop()
     }
 
     qInfo("Notification loop stopped!");
+}
+
+void AccessMediator::startDecisionMaking()
+{
+    this->m_delayedDecision.stop();
+    this->m_delayedDecision.start();
+}
+
+void AccessMediator::accessDecision()
+{
+    for (const auto& device : this->m_devices) {
+        const QString deviceName = device.first;
+        // Do the pid matching now
+        const std::vector<quint64> openPids = this->m_devices[deviceName]->runningPids;
+        const std::vector<quint64> pids = findUsingPids(deviceName);
+
+        this->m_devices[deviceName]->runningPids = pids;
+        if (pids.size() >= 1) {
+            qDebug() << "Device accessed by:" << pids;
+            qInfo("Access allowed for %s", deviceName.toUtf8().data());
+            emit accessAllowed(deviceName);
+        } else {
+            qInfo("Device %s closed with open count %d", deviceName.toUtf8().data(), pids.size());
+            emit deviceClosed(deviceName);
+        }
+    }
 }
 
 static int separatorsInPath(const QString& path)
