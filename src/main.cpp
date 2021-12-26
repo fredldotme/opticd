@@ -67,11 +67,6 @@ static inline void makeDumpableOrDie()
         exit(1);
         return;
     }
-    if (chmod("/proc/self/environ", 0440) != 0) {
-        qFatal("Failed to chown envrionment: %s", strerror(errno));
-        exit(1);
-        return;
-    }
 }
 
 static inline void setPermittedCapsOrDie()
