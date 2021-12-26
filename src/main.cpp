@@ -16,6 +16,7 @@
 #include <signal.h>
 #include <sys/capability.h>
 #include <sys/prctl.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 
 #include "eglhelper.h"
@@ -53,11 +54,61 @@ static void sig_handler(int sig_num)
     exit(0);
 }
 
-static inline void setCapsOrDie()
+static const std::array<cap_value_t, 5> necessaryCaps {
+    CAP_SETUID, CAP_SETGID, CAP_CHOWN, CAP_SYS_PTRACE, CAP_SYS_ADMIN
+};
+
+static inline void makeDumpableOrDie()
 {
-    static const std::array<cap_value_t, 4> necessaryCaps {
-        CAP_CHOWN, CAP_SETUID, CAP_SETGID, CAP_SYS_PTRACE
-    };
+    // Lomiri needs to read the environment or arguments of this process...
+    // ... fine! Let's make ourselves dumpable.
+    if (prctl(PR_SET_DUMPABLE, 1, 0, 0, 0) < 0) {
+        qFatal("Failed to set dumpable flag: %s", strerror(errno));
+        exit(1);
+        return;
+    }
+    if (chmod("/proc/self/environ", 0440) != 0) {
+        qFatal("Failed to chown envrionment: %s", strerror(errno));
+        exit(1);
+        return;
+    }
+}
+
+static inline void setPermittedCapsOrDie()
+{
+    cap_t caps = cap_init();
+
+    if (prctl(PR_SET_KEEPCAPS, 1, 0, 0, 0) < 0) {
+        qFatal("Failed to set keepcaps flag: %s", strerror(errno));
+        exit(1);
+        return;
+    }
+
+    makeDumpableOrDie();
+
+    // Auto-free caps object when done
+    auto capfree = [](cap_t* c){ cap_free(c); };
+    std::unique_ptr<cap_t, decltype(capfree)> capcleaner(&caps, capfree);
+
+    if (cap_set_flag(caps, CAP_PERMITTED, necessaryCaps.size(), necessaryCaps.data(), CAP_SET) != 0) {
+        qFatal("Failed to set effective caps: %s", strerror(errno));
+        exit(1);
+        return;
+    }
+    if (cap_set_flag(caps, CAP_EFFECTIVE, necessaryCaps.size(), necessaryCaps.data(), CAP_SET) != 0) {
+        qFatal("Failed to set permitted caps: %s", strerror(errno));
+        exit(1);
+        return;
+    }
+    if (cap_set_proc(caps) != 0) {
+        qFatal("Failed to set permitted process caps: %s", strerror(errno));
+        exit(1);
+        return;
+    }
+}
+
+static inline void setEffectiveCapsOrDie()
+{
     cap_t caps = cap_init();
 
     // Auto-free caps object when done
@@ -65,17 +116,17 @@ static inline void setCapsOrDie()
     std::unique_ptr<cap_t, decltype(capfree)> capcleaner(&caps, capfree);
 
     if (cap_set_flag(caps, CAP_PERMITTED, necessaryCaps.size(), necessaryCaps.data(), CAP_SET) != 0) {
-        qFatal("Failed to set permitted caps: %s", strerror(errno));
-        exit(1);
-        return;
-    }
-    if (cap_set_flag(caps, CAP_EFFECTIVE, necessaryCaps.size(), necessaryCaps.data(), CAP_SET) != 0) {
         qFatal("Failed to set effective caps: %s", strerror(errno));
         exit(1);
         return;
     }
+    if (cap_set_flag(caps, CAP_EFFECTIVE, necessaryCaps.size(), necessaryCaps.data(), CAP_SET) != 0) {
+        qFatal("Failed to set permitted caps: %s", strerror(errno));
+        exit(1);
+        return;
+    }
     if (cap_set_proc(caps) != 0) {
-        qFatal("Failed to set process caps: %s", strerror(errno));
+        qFatal("Failed to set effective process caps: %s", strerror(errno));
         exit(1);
         return;
     }
@@ -92,7 +143,14 @@ static inline void dropPrivsOrDie()
     qInfo("Running as uid: %d", userId);
     qInfo("Euid: %d", geteuid());
 
-    if (geteuid() == 0) {
+    if (getuid() != geteuid()) {
+        // Permitted caps can be kept, effective ones need to be regained
+        if (prctl(PR_SET_KEEPCAPS, 1) < 0) {
+            qFatal("Failed to set keepcaps flag: %s", strerror(errno));
+            exit(1);
+            return;
+        }
+
         int ngroups = sysconf(_SC_NGROUPS_MAX) + 1;
         gid_t* groups = (gid_t*) malloc(ngroups * sizeof(gid_t));
 
@@ -158,20 +216,16 @@ static inline void dropPrivsOrDie()
         return;
     }
 
-    // Lomiri needs to read the environment or arguments of this process...
-    // ... fine! We still have CAP_CHOWN.
-    if (prctl(PR_SET_DUMPABLE, 1) < 0) {
-        qFatal("Failed to set dumpable flag: %s", strerror(errno));
-        exit(1);
-        return;
-    }
+    makeDumpableOrDie();
 }
 
 int main(int argc, char *argv[])
 {
     // Before doing ANYTHING, keep PTRACE capability and drop privileges
-    setCapsOrDie();
+    setPermittedCapsOrDie();
     dropPrivsOrDie();
+    setEffectiveCapsOrDie();
+    makeDumpableOrDie();
 
     // Get to the chopper
     chdir("/");
@@ -180,10 +234,7 @@ int main(int argc, char *argv[])
     EGLContext context;
     EGLSurface surface;
 
-    // Paranoid power regain failed anyway, it's safe to allow suid
-    QCoreApplication::setSetuidAllowed(true);
-
-    QCoreApplication a(argc, argv);
+    AccessMediator mediator;
 
     bool initSuccess = initEgl(&context, &display, &surface);
     if (!initSuccess) {
@@ -193,7 +244,9 @@ int main(int argc, char *argv[])
 
     signal(SIGINT, sig_handler);
 
-    AccessMediator mediator;
+    // Paranoid power regain failed anyway, it's safe to allow suid
+    QCoreApplication::setSetuidAllowed(true);
+    QCoreApplication a(argc, argv);
 
     for (const HybrisCameraInfo &cameraInfo : HybrisCameraSource::availableCameras()) {
         HybrisCameraSource* source = new HybrisCameraSource(cameraInfo,

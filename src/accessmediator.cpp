@@ -5,40 +5,25 @@
 #include <QDirIterator>
 
 #include <dirent.h>
-#include <sys/inotify.h>
+#include <fcntl.h>
+#include <linux/fanotify.h>
+#include <sys/fanotify.h>
 #include <unistd.h>
 
-#define EVENT_SIZE  (sizeof (struct inotify_event))
-#define EVENT_BUF_LEN (1024 * (EVENT_SIZE + 16))
+static const int FANOTIFY_BUFFER_SIZE = 8192;
+static const uint64_t EVENTMASK = (FAN_ACCESS | FAN_CLOSE_NOWRITE);
 
 AccessMediator::AccessMediator(QObject *parent) :
     QObject(parent),
     m_notifyThread(new QThread(this)),
     m_running(true)
 {
-    this->m_notifyFd = inotify_init();
+    this->m_notifyFd = fanotify_init(FAN_CLOEXEC, O_RDONLY | O_CLOEXEC | O_LARGEFILE);
     if (this->m_notifyFd < 0) {
-        qFatal("Failed to initialize inotify watcher: %s", strerror(errno));
+        qFatal("Failed to initialize file access notification watcher: %s", strerror(errno));
         exit(2);
         return;
     }
-
-
-    int watchFd = inotify_add_watch(this->m_notifyFd,
-                                    "/dev",
-                                    IN_OPEN | IN_CLOSE);
-    if (watchFd < 0) {
-        qFatal("Failed to create watchFd: %s", strerror(errno));
-        exit(2);
-        return;
-    }
-
-    this->m_delayedDecision.setSingleShot(true);
-    this->m_delayedDecision.setInterval(100);
-    QObject::connect(&this->m_delayedDecision, &QTimer::timeout,
-                     this, &AccessMediator::accessDecision);
-
-    this->m_watchers.insert(watchFd);
 
     QObject::connect(this->m_notifyThread, &QThread::started,
                      this, &AccessMediator::runNotificationLoop, Qt::DirectConnection);
@@ -53,27 +38,13 @@ AccessMediator::~AccessMediator()
     close(this->m_notifyFd);
 }
 
-static inline bool hasSamePids(
-        const std::vector<quint64>& first,
-        const std::vector<quint64>& second)
+static inline QString getNodeForPid(const int& fd)
 {
-    for (const quint64& pid1 : first) {
-        for (const quint64 pid2 : second)
-            if (pid1 != pid2)
-                return false;
-    }
-    return true;
-}
-
-static inline bool hasNewPids(
-        const std::vector<quint64>& oldPids,
-        const std::vector<quint64>& newPids)
-{
-    for (const quint64& pid : newPids) {
-        if (std::find(oldPids.begin(), oldPids.end(), pid) == oldPids.end())
-            return true;
-    }
-    return false;
+    const QString pattern = QStringLiteral("/proc/self/fd/%1").arg(fd);
+    char fdLinkTarget[PATH_MAX];
+    ssize_t len = readlink(pattern.toUtf8().data(), fdLinkTarget, PATH_MAX);
+    fdLinkTarget[len] = '\0';
+    return QString::fromUtf8(fdLinkTarget);
 }
 
 void AccessMediator::runNotificationLoop()
@@ -98,153 +69,58 @@ void AccessMediator::runNotificationLoop()
         if (!n || n == -1)
             continue;
 
-        char buffer[EVENT_BUF_LEN];
-        const int length = read(this->m_notifyFd, buffer, EVENT_BUF_LEN);
+        char buffer[FANOTIFY_BUFFER_SIZE];
+        int length = read(this->m_notifyFd, buffer, FANOTIFY_BUFFER_SIZE);
         if (length < 0) {
             qWarning("Failed to read from notification fd: %s", strerror(errno));
             continue;
         }
 
-        int i = 0;
-        while (i < length) {
-            struct inotify_event* event = (struct inotify_event*) &buffer[i];
+        struct fanotify_event_metadata* event = (struct fanotify_event_metadata*) &buffer;
 
-            if (event->len <= 0) {
-                i += (EVENT_SIZE+event->len);
-                continue;
-            }
-
-            const QString deviceName = QStringLiteral("/dev/%1").arg(event->name);
-
-            // Skip devices we don't manage
-            if (this->m_devices.find(deviceName) == this->m_devices.end()) {
-                i += (EVENT_SIZE+event->len);
-                continue;
-            }
-
+        while (FAN_EVENT_OK(event, length)) {
             // Skip those events that would cancel each other out
             // Don't know if those exist, but let's be safe
-            if (event->mask & IN_OPEN && event->mask & IN_CLOSE) {
-                i += (EVENT_SIZE+event->len);
+            if (event->mask & FAN_ACCESS && event->mask & FAN_CLOSE_NOWRITE) {
+                event = FAN_EVENT_NEXT(event, length);
                 continue;
             }
 
             // Start the decision making
-            if (event->mask & IN_OPEN || event->mask & IN_CLOSE) {
-                QMetaObject::invokeMethod(this, "startDecisionMaking", Qt::QueuedConnection);
+            if (event->mask & FAN_ACCESS) {
+                // Do the pid matching now
+                qDebug() << "Device accessed by:" << event->pid;
+                const QString deviceName = getNodeForPid(event->fd);
+                qInfo("Access allowed for %s", deviceName.toUtf8().data());
+                emit accessAllowed(deviceName);
+            } else {
+                const QString deviceName = getNodeForPid(event->fd);
+                qInfo("Device %s closed", deviceName.toUtf8().data());
+                emit deviceClosed(deviceName);
             }
-
-            i += (EVENT_SIZE+event->len);
+            close(event->fd);
+            event = FAN_EVENT_NEXT(event, length);
         }
     }
 
     qInfo("Notification loop stopped!");
 }
 
-void AccessMediator::startDecisionMaking()
-{
-    this->m_delayedDecision.stop();
-    this->m_delayedDecision.start();
-}
-
-void AccessMediator::accessDecision()
-{
-    for (const auto& device : this->m_devices) {
-        const QString deviceName = device.first;
-        // Do the pid matching now
-        const std::vector<quint64> openPids = this->m_devices[deviceName]->runningPids;
-        const std::vector<quint64> pids = findUsingPids(deviceName);
-
-        this->m_devices[deviceName]->runningPids = pids;
-        if (pids.size() >= 1) {
-            qDebug() << "Device accessed by:" << pids;
-            qInfo("Access allowed for %s", deviceName.toUtf8().data());
-            emit accessAllowed(deviceName);
-        } else {
-            qInfo("Device %s closed with open count %d", deviceName.toUtf8().data(), pids.size());
-            emit deviceClosed(deviceName);
-        }
-    }
-}
-
-static int separatorsInPath(const QString& path)
-{
-    int ret = 0;
-    for (const QChar& c : path) {
-        if (c == '/') ret += 1;
-    }
-    return ret;
-}
-
-std::vector<quint64> AccessMediator::findUsingPids(const QString &device)
-{    
-    std::vector<quint64> pids;
-
-    DIR *proc = opendir("/proc");
-    struct dirent* procContents;
-    if (!proc) {
-        qFatal("Couldn't open /proc: %s", strerror(errno));
-    }
-
-    while ((procContents = readdir(proc)) != NULL) {
-        // Skip ourselves
-        const quint64 thatpid = atol(procContents->d_name);
-        if (thatpid == 0)
-            continue;
-
-        if (thatpid == getpid())
-            continue;
-
-        QString fdDir = QStringLiteral("/proc/%1/fd").arg(QString::fromUtf8(procContents->d_name));
-        const QByteArray& fdDirUtf8 = fdDir.toUtf8();
-
-        if (access(fdDirUtf8.data(), F_OK) != 0)
-            continue;
-
-        DIR* procFd = opendir(fdDirUtf8.data());
-        struct dirent* fdContents;
-        if (!procFd) {
-            continue;
-        }
-
-        while ((fdContents = readdir(procFd)) != NULL) {
-            QString fdLink = QStringLiteral("%1/%2").arg(fdDir, QString::fromUtf8(fdContents->d_name));
-            const QByteArray& fdLinkUtf8 = fdLink.toUtf8();
-
-            char fdLinkTarget[PATH_MAX];
-
-            ssize_t len = readlink(fdLinkUtf8.data(), fdLinkTarget, PATH_MAX);
-            fdLinkTarget[len] = '\0';
-
-            if (QString::fromUtf8(fdLinkTarget) != device)
-                continue;
-
-            qDebug() << "  pid: " << procContents->d_name << "target: " << fdLinkTarget;
-
-            pids.push_back(atoi(procContents->d_name));
-        }
-
-        closedir(procFd);
-    }
-
-    closedir(proc);
-
-    return pids;
-}
-
 void AccessMediator::registerDevice(const QString path)
 {
-    TrackingInfo* info = new TrackingInfo;
-    this->m_devices.insert({path, info});
+    if (fanotify_mark(this->m_notifyFd, FAN_MARK_ADD, EVENTMASK, AT_FDCWD, path.toUtf8().data()) < 0) {
+        qFatal("Failed to set notify mark on %s", path.toUtf8().data());
+        exit(2);
+        return;
+    }
+
+    this->m_devices.insert(path.toStdString());
     qInfo("Registered watcher for node %s", path.toUtf8().data());
 }
 
 void AccessMediator::unregisterDevice(const QString path)
 {
-    if (this->m_devices.find(path) == this->m_devices.end()) {
-        qWarning("Device %s not registered, skipping...", path.toUtf8().data());
-        return;
-    }
-
-    this->m_devices.erase(path);
+    auto it = this->m_devices.find(path.toStdString());
+    if (it != this->m_devices.end())
+        this->m_devices.erase(it);
 }
