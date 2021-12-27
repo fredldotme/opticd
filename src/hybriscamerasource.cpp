@@ -4,8 +4,8 @@
 #include <QMetaObject>
 
 // Default camera names, assumes a max of 2 right now
-const QString DESCRIPTION_FRONT = QStringLiteral("Front facing camera");
-const QString DESCRIPTION_BACK = QStringLiteral("Back facing camera");
+const QString DESCRIPTION_FRONT = QStringLiteral("Front-facing camera");
+const QString DESCRIPTION_BACK = QStringLiteral("Back-facing camera");
 
 const int ANDROID_OK = 0;
 
