@@ -69,7 +69,7 @@ void AccessMediator::runNotificationLoop()
             continue;
 
         static const int BUFSIZE = sizeof(struct v4l2_loopback_hint);
-        char buffer[sizeof(BUFSIZE)];
+        char buffer[BUFSIZE];
 
         const int length = read(this->m_notifyFd, buffer, BUFSIZE);
         if (length < 0) {
