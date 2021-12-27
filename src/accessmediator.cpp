@@ -86,6 +86,8 @@ void AccessMediator::runNotificationLoop()
             continue;
 
         const QString deviceName = QStringLiteral("/dev/video%1").arg(hint->node);
+        if (this->m_devices.find(deviceName.toStdString()) == this->m_devices.end())
+            continue;
 
         switch (hint->type) {
         case HINT_OPEN:
