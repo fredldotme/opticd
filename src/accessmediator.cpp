@@ -1,8 +1,8 @@
 #include "accessmediator.h"
 
 #include <QDebug>
-#include <QDir>
-#include <QDirIterator>
+#include <QDBusMetaType>
+#include <QDBusConnection>
 
 #include <fcntl.h>
 
@@ -21,6 +21,27 @@ struct v4l2_loopback_hint {
     int node;
 };
 
+QDBusArgument &operator<<(QDBusArgument &argument, const Pids &msg)
+{
+    argument.beginArray(qMetaTypeId<int>());
+    for (int i = 0; i < msg.pids.length(); ++i )
+        argument << msg.pids[i];
+    argument.endArray();
+    return argument;
+}
+
+const QDBusArgument &operator>>(const QDBusArgument &argument, Pids &msg)
+{
+    argument.beginArray();
+    while (!argument.atEnd()) {
+        int pid;
+        argument >> pid;
+        msg.pids.append(pid);
+    }
+    argument.endArray();
+    return argument;
+}
+
 AccessMediator::AccessMediator(QObject *parent) :
     QObject(parent),
     m_notifyThread(new QThread(this)),
@@ -33,6 +54,20 @@ AccessMediator::AccessMediator(QObject *parent) :
         return;
     }
 
+    qDBusRegisterMetaType<Pids>();
+    qDebug() << QDBusConnection::sessionBus().connect("",
+                                                      "/",
+                                                      "com.canonical.UbuntuAppLaunch",
+                                                      "ApplicationPaused",
+                                                      this,
+                                                      SLOT(appPaused(QString, Pids)));
+    qDebug() << QDBusConnection::sessionBus().connect("",
+                                                      "/",
+                                                      "com.canonical.UbuntuAppLaunch",
+                                                      "ApplicationResumed",
+                                                      this,
+                                                      SLOT(appResumed(QString, Pids)));
+
     QObject::connect(this->m_notifyThread, &QThread::started,
                      this, &AccessMediator::runNotificationLoop, Qt::DirectConnection);
     this->m_notifyThread->start();
@@ -44,6 +79,30 @@ AccessMediator::~AccessMediator()
     this->m_notifyThread->terminate();
     this->m_notifyThread->wait(1000);
     close(this->m_notifyFd);
+}
+
+void AccessMediator::appPaused(QString name, Pids pids)
+{
+    for (const auto& device : this->m_devices) {
+        const TrackingInfo& tracking = this->m_devices[device.first];
+        for (const int& pid : pids.pids) {
+            if (tracking.fdsPerPid.find(pid) != tracking.fdsPerPid.end()) {
+                emit deviceClosed(QString::fromStdString(device.first));
+            }
+        }
+    }
+}
+
+void AccessMediator::appResumed(QString name, Pids pids)
+{
+    for (const auto& device : this->m_devices) {
+        const TrackingInfo& tracking = this->m_devices[device.first];
+        for (const int& pid : pids.pids) {
+            if (tracking.fdsPerPid.find(pid) != tracking.fdsPerPid.end()) {
+                emit accessAllowed(QString::fromStdString(device.first));
+            }
+        }
+    }
 }
 
 void AccessMediator::runNotificationLoop()

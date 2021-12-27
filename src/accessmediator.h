@@ -2,8 +2,11 @@
 #define ACCESSMEDIATOR_H
 
 #include <QObject>
+#include <QDBusArgument>
 #include <QTimer>
 #include <QThread>
+#include <QVector>
+#include <QVariant>
 
 #include <map>
 #include <set>
@@ -15,6 +18,12 @@ struct TrackingInfo {
     std::map<pid_t, int> fdsPerPid;
 };
 
+struct Pids
+{
+    QVector<int> pids;
+};
+Q_DECLARE_METATYPE(Pids)
+
 class AccessMediator : public QObject
 {
     Q_OBJECT
@@ -25,6 +34,10 @@ public:
 public slots:
     void registerDevice(const QString path);
     void unregisterDevice(const QString path);
+
+private slots:
+    void appPaused(QString name, Pids pids);
+    void appResumed(QString name, Pids pids);
 
 private:
     void runNotificationLoop();

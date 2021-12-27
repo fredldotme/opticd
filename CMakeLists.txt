@@ -13,7 +13,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -isystem -I/usr/include")
 
-find_package(Qt5 REQUIRED Core)
+find_package(Qt5 REQUIRED Core DBus)
 find_package(PkgConfig)
 pkg_check_modules(MIRCLIENT REQUIRED mirclient)
 
@@ -33,7 +33,7 @@ add_executable(opticd
   src/main.cpp
 )
 
-target_link_libraries(opticd Qt5::Core camera cap EGL GLESv2 ${MIRCLIENT_LDFLAGS})
+target_link_libraries(opticd Qt5::Core Qt5::DBus camera cap EGL GLESv2 ${MIRCLIENT_LDFLAGS})
 
 install(TARGETS opticd RUNTIME DESTINATION bin)
 install(FILES aux/service/opticd.conf DESTINATION share/upstart/sessions)
