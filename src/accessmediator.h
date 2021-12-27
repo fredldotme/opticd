@@ -5,17 +5,8 @@
 #include <QTimer>
 #include <QThread>
 
-#include <map>
 #include <set>
 #include <vector>
-
-struct TrackingInfo {
-    ~TrackingInfo() {
-        qDebug("Tracking info removed with %d open accesses",
-               runningPids.size());
-    }
-    std::vector<quint64> runningPids; // TODO: turn this into a set
-};
 
 class AccessMediator : public QObject
 {
@@ -28,10 +19,6 @@ public slots:
     void registerDevice(const QString path);
     void unregisterDevice(const QString path);
 
-private slots:
-    void startDecisionMaking();
-    void accessDecision();
-
 private:
     void runNotificationLoop();
     std::vector<quint64> findUsingPids(const QString& device);
@@ -39,9 +26,7 @@ private:
     bool m_running;
     QThread* m_notifyThread;
     int m_notifyFd;
-    std::set<int> m_watchers;
-    std::map<const QString, TrackingInfo*> m_devices;
-    QTimer m_delayedDecision;
+    std::set<std::string> m_devices;
 
 signals:
     void permitted(const quint64 pid);
