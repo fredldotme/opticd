@@ -21,7 +21,6 @@ public slots:
 
 private:
     void runNotificationLoop();
-    std::vector<quint64> findUsingPids(const QString& device);
 
     bool m_running;
     QThread* m_notifyThread;
