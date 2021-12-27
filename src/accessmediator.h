@@ -5,8 +5,15 @@
 #include <QTimer>
 #include <QThread>
 
+#include <map>
 #include <set>
 #include <vector>
+
+#include <unistd.h>
+
+struct TrackingInfo {
+    std::map<pid_t, int> fdsPerPid;
+};
 
 class AccessMediator : public QObject
 {
@@ -25,7 +32,7 @@ private:
     bool m_running;
     QThread* m_notifyThread;
     int m_notifyFd;
-    std::set<std::string> m_devices;
+    std::map<std::string, TrackingInfo> m_devices;
 
 signals:
     void permitted(const quint64 pid);

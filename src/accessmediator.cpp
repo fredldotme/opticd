@@ -5,7 +5,6 @@
 #include <QDirIterator>
 
 #include <fcntl.h>
-#include <unistd.h>
 
 #define CONTROL_DEVICE "/dev/v4l2loopback"
 
@@ -86,18 +85,31 @@ void AccessMediator::runNotificationLoop()
             continue;
 
         const QString deviceName = QStringLiteral("/dev/video%1").arg(hint->node);
+
         if (this->m_devices.find(deviceName.toStdString()) == this->m_devices.end())
             continue;
 
+        const std::string stdDeviceName = deviceName.toStdString();
+        std::map<int, int> &fdsPerPid = this->m_devices[stdDeviceName].fdsPerPid;
+
         switch (hint->type) {
         case HINT_OPEN:
+            if (fdsPerPid.find(hint->pid) != fdsPerPid.end())
+                ++fdsPerPid[hint->pid];
+            else
+                fdsPerPid[hint->pid] = 1;
+
             qDebug() << "Device accessed by:" << hint->pid;
             qInfo("Access allowed for %s", deviceName.toUtf8().data());
             emit accessAllowed(deviceName);
+
             break;
         case HINT_CLOSE:
-            qInfo("Device %s closed by %d", deviceName.toUtf8().data(), hint->pid);
-            emit deviceClosed(deviceName);
+            if (--fdsPerPid[hint->pid] == 0) {
+                fdsPerPid.erase(hint->pid);
+                qInfo("Device %s closed by %d", deviceName.toUtf8().data(), hint->pid);
+                emit deviceClosed(deviceName);
+            }
             break;
         default:
             qDebug("Unknown hint type received: %d", hint->type);
@@ -110,7 +122,8 @@ void AccessMediator::runNotificationLoop()
 
 void AccessMediator::registerDevice(const QString path)
 {
-    this->m_devices.insert(path.toStdString());
+    TrackingInfo info;
+    this->m_devices.insert({path.toStdString(), info});
     qInfo("Registered watcher for node %s", path.toUtf8().data());
 }
 
