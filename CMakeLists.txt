@@ -37,5 +37,4 @@ target_link_libraries(opticd Qt5::Core Qt5::DBus camera cap EGL GLESv2 ${MIRCLIE
 
 install(TARGETS opticd RUNTIME DESTINATION bin)
 install(FILES aux/service/opticd.conf DESTINATION share/upstart/sessions)
-install(FILES aux/sysctl/50-opticd.conf DESTINATION ${CMAKE_INSTALL_SYSCONFDIR}/sysctl.d)
 install(FILES aux/udev/50-opticd.rules DESTINATION ${CMAKE_INSTALL_SYSCONFDIR}/udev/rules.d)
