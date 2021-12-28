@@ -24,7 +24,7 @@ struct v4l2_loopback_hint {
 QDBusArgument &operator<<(QDBusArgument &argument, const Pids &msg)
 {
     argument.beginArray(qMetaTypeId<int>());
-    for (int i = 0; i < msg.pids.length(); ++i )
+    for (int i = 0; i < msg.pids.length(); ++i)
         argument << msg.pids[i];
     argument.endArray();
     return argument;
@@ -76,9 +76,9 @@ AccessMediator::AccessMediator(QObject *parent) :
 AccessMediator::~AccessMediator()
 {
     this->m_running = false;
+    close(this->m_notifyFd);
     this->m_notifyThread->terminate();
     this->m_notifyThread->wait(1000);
-    close(this->m_notifyFd);
 }
 
 void AccessMediator::appPaused(QString name, Pids pids)
@@ -107,26 +107,8 @@ void AccessMediator::appResumed(QString name, Pids pids)
 
 void AccessMediator::runNotificationLoop()
 {
-    fd_set set;
-    struct timeval tv;
-
-    FD_ZERO(&set);
-
     while (this->m_running)
     {
-        FD_SET(this->m_notifyFd, &set);
-        tv.tv_sec = 1;
-        tv.tv_usec = 0;
-
-        int n = select(FD_SETSIZE, &set, NULL, NULL, &tv);
-
-        // It's time to go
-        if (!this->m_running)
-            break;
-
-        if (!n || n == -1)
-            continue;
-
         static const int BUFSIZE = sizeof(struct v4l2_loopback_hint);
         char buffer[BUFSIZE];
 
