@@ -75,6 +75,11 @@ void V4L2LoopbackSink::deleteLoopbackDevice()
         return;
     }
 
+    if (close(this->m_sinkFd) != 0) {
+        qWarning("Failed to close video node");
+        return;
+    }
+
     if (ioctl(fd, V4L2LOOPBACK_CTL_REMOVE, this->m_deviceNumber) < 0) {
         qWarning("Failed to delete v4l2sink device");
         return;
