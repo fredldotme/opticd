@@ -14,13 +14,13 @@ public:
     ~V4L2LoopbackSink();
 
     void pushCapture(QByteArray capture);
+    void feedDummyFrame();
     void run();
 
 private:
     void addLoopbackDevice();
     void openLoopbackDevice();
     void deleteLoopbackDevice();
-    void feedDummyFrame();
 
     QString m_path;
     QString m_description;

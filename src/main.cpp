@@ -19,7 +19,6 @@
 #include <sys/types.h>
 
 #include "eglhelper.h"
-#include "accessmediator.h"
 #include "hybriscamerasource.h"
 #include "v4l2loopbacksink.h"
 
@@ -72,8 +71,6 @@ int main(int argc, char *argv[])
 
     signal(SIGINT, sig_handler);
 
-    AccessMediator mediator;
-
     for (const HybrisCameraInfo &cameraInfo : HybrisCameraSource::availableCameras()) {
         HybrisCameraSource* source = new HybrisCameraSource(cameraInfo,
                                                             context,
@@ -83,16 +80,12 @@ int main(int argc, char *argv[])
                                                       source->height(),
                                                       cameraInfo.description);
 
-        // Register created device with the mediator
-        QObject::connect(sink, &V4L2LoopbackSink::deviceCreated,
-                         &mediator, &AccessMediator::registerDevice, Qt::DirectConnection);
-        QObject::connect(sink, &V4L2LoopbackSink::deviceRemoved,
-                         &mediator, &AccessMediator::unregisterDevice, Qt::DirectConnection);
-
         // Cause open() on devices to start frame feed
-        QObject::connect(&mediator, &AccessMediator::accessAllowed,
+        QObject::connect(sink, &V4L2LoopbackSink::deviceCreated,
                          source, &HybrisCameraSource::start, Qt::DirectConnection);
-        QObject::connect(&mediator, &AccessMediator::deviceClosed,
+        QObject::connect(sink, &V4L2LoopbackSink::deviceCreated,
+                         sink, &V4L2LoopbackSink::feedDummyFrame, Qt::DirectConnection);
+        QObject::connect(sink, &V4L2LoopbackSink::deviceRemoved,
                          source, &HybrisCameraSource::stop, Qt::DirectConnection);
 
         // Frame passing through one-way communication from source to sink

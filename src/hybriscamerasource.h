@@ -48,6 +48,7 @@ private slots:
     void queueDelayedStop();
 
 private:
+    HybrisCameraInfo m_info;
     CameraControl* m_control = nullptr;
     CameraControlListener* m_listener = nullptr;
 
