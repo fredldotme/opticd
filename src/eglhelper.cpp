@@ -2,6 +2,8 @@
 
 #include "eglhelper.h"
 
+#include <mir_toolkit/mir_client_library.h>
+
 bool initEgl(EGLContext* eglContext, EGLDisplay* eglDisplay, EGLSurface* eglSurface)
 {
     EGLDisplay display;
@@ -9,7 +11,15 @@ bool initEgl(EGLContext* eglContext, EGLDisplay* eglDisplay, EGLSurface* eglSurf
     EGLSurface surface;
     EGLConfig eglConfig;
 
-    display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+    MirConnection* connection = mir_connect_sync("/run/user/32011/mir_socket", "optic");
+    if (!mir_connection_is_valid(connection))
+    {
+        qWarning() << "could not connect to server\n";
+        return false;
+    }
+
+    EGLNativeDisplayType nativeDisplay = (EGLNativeDisplayType) mir_connection_get_egl_native_display(connection);
+    display = eglGetDisplay(nativeDisplay);
     if (display == EGL_NO_DISPLAY) {
         qWarning() << "No EGL display found.";
         return false;

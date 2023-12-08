@@ -43,6 +43,15 @@ QVector<HybrisCameraInfo> HybrisCameraSource::availableCameras()
     return ret;
 }
 
+static void removeAlpha(uint8_t* from, uint8_t* to, size_t fromLength)
+{
+    size_t toLength = 0;
+    for (int i = 0; i < fromLength; i++) {
+        if (i % 4 == 3) continue;
+        to[toLength++] = from[i];
+    }
+}
+
 static void readTextureIntoBuffer(void* ctx)
 {
     HybrisCameraSource* thiz = static_cast<HybrisCameraSource*>(ctx);
@@ -60,12 +69,24 @@ static void setPreviewSize(void* ctx, int width, int height)
 HybrisCameraSource::HybrisCameraSource(HybrisCameraInfo info, EGLContext context,
                                        EGLDisplay display, EGLSurface surface, QObject *parent) :
     QObject(parent),
-    m_info(info),
     m_listener(new CameraControlListener),
     m_eglContext(context),
     m_eglDisplay(display),
     m_eglSurface(surface)
 {
+    if (info.id < 0)
+        return;
+
+    memset(this->m_listener, 0, sizeof(*this->m_listener));
+    this->m_listener->context = this;
+    this->m_listener->on_preview_texture_needs_update_cb = &readTextureIntoBuffer;
+
+    this->m_control = android_camera_connect_by_id(info.id, this->m_listener);
+    if (!this->m_control) {
+        qWarning() << "Failed to connect to camera" << info.id << info.description;
+        return;
+    }
+
     // Delay stop of frame production
     // Applications tend to query the device and only see it as valid when
     // it receives frames from the V4L2 device.
@@ -77,11 +98,20 @@ HybrisCameraSource::HybrisCameraSource(HybrisCameraInfo info, EGLContext context
                      this, [=](){
         qDebug() << "... stopping camera now!";
         android_camera_stop_preview(this->m_control);
-        android_camera_disconnect(this->m_control);
-        android_camera_delete(this->m_control);
-        this->m_control = nullptr;
     });
 
+    android_camera_enumerate_supported_preview_sizes(this->m_control, &setPreviewSize, this);
+    android_camera_set_preview_size(this->m_control, this->width(), this->height());
+
+    this->m_intermediateBuffer.resize(this->width() * this->height() * 4);
+    this->m_pixelBuffer.resize(this->width() * this->height() * 3);
+
+    int min, max;
+    android_camera_get_preview_fps_range(this->m_control, &min, &max);
+    android_camera_set_preview_fps(this->m_control, min);
+    android_camera_set_preview_callback_mode(this->m_control, PREVIEW_CALLBACK_ENABLED);
+
+    android_camera_set_preview_format(this->m_control, CAMERA_PIXEL_FORMAT_RGBA8888);
     provideExternalTexture(&this->m_texture);
     provideFramebuffer(&this->m_fbo);
 
@@ -89,8 +119,7 @@ HybrisCameraSource::HybrisCameraSource(HybrisCameraInfo info, EGLContext context
     glBindTexture(GL_TEXTURE_EXTERNAL_OES, this->m_texture);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_EXTERNAL_OES, this->m_texture, 0);
 
-    this->m_width = 1280;
-    this->m_height = 720;
+    android_camera_set_preview_texture(this->m_control, this->m_texture);
 }
 
 HybrisCameraSource::~HybrisCameraSource()
@@ -109,8 +138,8 @@ HybrisCameraSource::~HybrisCameraSource()
 
 void HybrisCameraSource::setSize(const size_t &width, const size_t &height)
 {
-    // Don't support anything higher than 1080p for now
-    if (width > 1920 || height > 1080)
+    // Don't support anything higher than 720p for now
+    if (width > 1280 || height > 720)
         return;
 
     if (width <= this->m_width && height <= this->m_height)
@@ -137,44 +166,15 @@ QMutex* HybrisCameraSource::bufferMutex()
 
 void HybrisCameraSource::start()
 {
+    if (!this->m_control)
+        return;
+
     QMetaObject::invokeMethod(this, "queueStart", Qt::QueuedConnection);
 }
 
 void HybrisCameraSource::queueStart()
 {
-    if (this->m_info.id < 0) {
-        qWarning() << "Failed to start camera, ID is invalid:" << this->m_info.id;
-        return;
-    }
-
     this->m_stopDelayer.stop();
-
-    memset(this->m_listener, 0, sizeof(*this->m_listener));
-    this->m_listener->context = this;
-    this->m_listener->on_preview_texture_needs_update_cb = &readTextureIntoBuffer;
-
-    this->m_control = android_camera_connect_by_id(this->m_info.id, this->m_listener);
-    if (!this->m_control) {
-        qWarning() << "Failed to connect to camera" << this->m_info.id << this->m_info.description;
-        return;
-    }
-
-    android_camera_enumerate_supported_preview_sizes(this->m_control, &setPreviewSize, this);
-    if (this->m_width == 0 || this->m_height == 0) {
-        this->m_width = 1280;
-        this->m_height = 720;
-    }
-    android_camera_set_preview_size(this->m_control, this->width(), this->height());
-
-    this->m_pixelBuffer.resize(this->width() * this->height() * 4);
-
-    int min, max;
-    android_camera_get_preview_fps_range(this->m_control, &min, &max);
-    android_camera_set_preview_fps(this->m_control, std::min<int>(min, max));
-    android_camera_set_preview_callback_mode(this->m_control, PREVIEW_CALLBACK_ENABLED);
-
-    android_camera_set_preview_format(this->m_control, CAMERA_PIXEL_FORMAT_RGBA8888);
-    android_camera_set_preview_texture(this->m_control, this->m_texture);
 
     qDebug() << "Starting camera";
     android_camera_start_preview(this->m_control);
@@ -183,9 +183,6 @@ void HybrisCameraSource::queueStart()
 void HybrisCameraSource::requestFrame()
 {
     QMutexLocker locker(&this->m_bufferMutex);
-
-    if (!this->m_control)
-        return;
 
     const bool mcSuccess = eglMakeCurrent(this->m_eglDisplay, this->m_eglSurface, this->m_eglSurface, this->m_eglContext);
     if (!mcSuccess) {
@@ -200,10 +197,11 @@ void HybrisCameraSource::requestFrame()
     glBindFramebuffer(GL_FRAMEBUFFER, this->m_fbo);
     glBindTexture(GL_TEXTURE_EXTERNAL_OES, this->m_texture);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_EXTERNAL_OES, this->m_texture, 0);
-    glReadPixels(0, 0, this->width(), this->height(), GL_RGBA, GL_UNSIGNED_BYTE, (char*)this->m_pixelBuffer.data());
+    glReadPixels(0, 0, this->width(), this->height(), GL_RGBA, GL_UNSIGNED_BYTE, (char*)this->m_intermediateBuffer.data());
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glBindTexture(GL_TEXTURE_2D, 0);
 
+    removeAlpha((uint8_t*)this->m_intermediateBuffer.data(), (uint8_t*)this->m_pixelBuffer.data(), this->m_intermediateBuffer.length());
     emit captured(this->m_pixelBuffer);
 }
 
