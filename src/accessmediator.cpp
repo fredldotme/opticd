@@ -57,13 +57,13 @@ AccessMediator::AccessMediator(QObject *parent) :
     qDBusRegisterMetaType<Pids>();
     qDebug() << QDBusConnection::sessionBus().connect("",
                                                       "/",
-                                                      "com.canonical.UbuntuAppLaunch",
+                                                      "com.lomiri.LomiriAppLaunch",
                                                       "ApplicationPaused",
                                                       this,
                                                       SLOT(appPaused(QString, Pids)));
     qDebug() << QDBusConnection::sessionBus().connect("",
                                                       "/",
-                                                      "com.canonical.UbuntuAppLaunch",
+                                                      "com.lomiri.LomiriAppLaunch",
                                                       "ApplicationResumed",
                                                       this,
                                                       SLOT(appResumed(QString, Pids)));
