@@ -91,6 +91,8 @@ int main(int argc, char *argv[])
 
         // Cause open() on devices to start frame feed
         QObject::connect(&mediator, &AccessMediator::accessAllowed,
+                         sink, &V4L2LoopbackSink::feedDummyFrame, Qt::DirectConnection);
+        QObject::connect(&mediator, &AccessMediator::accessAllowed,
                          source, &HybrisCameraSource::start, Qt::DirectConnection);
         QObject::connect(&mediator, &AccessMediator::deviceClosed,
                          source, &HybrisCameraSource::stop, Qt::DirectConnection);

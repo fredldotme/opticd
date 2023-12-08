@@ -16,11 +16,12 @@ public:
     void pushCapture(QByteArray capture);
     void run();
 
+    void feedDummyFrame();
+
 private:
     void addLoopbackDevice();
     void openLoopbackDevice();
     void deleteLoopbackDevice();
-    void feedDummyFrame();
 
     QString m_path;
     QString m_description;
