@@ -102,6 +102,7 @@ HybrisCameraSource::HybrisCameraSource(HybrisCameraInfo info, EGLContext context
 
     android_camera_enumerate_supported_preview_sizes(this->m_control, &setPreviewSize, this);
     android_camera_set_preview_size(this->m_control, this->width(), this->height());
+    android_camera_set_rotation(this->m_control, info.orientation);
 
     this->m_intermediateBuffer.resize(this->width() * this->height() * 4);
     this->m_pixelBuffer.resize(this->width() * this->height() * 3);
