@@ -5,6 +5,10 @@
 #include <QDBusConnection>
 
 #include <fcntl.h>
+#include <sys/socket.h>
+#include <linux/netlink.h>
+#include <linux/connector.h>
+#include <linux/cn_proc.h>
 
 #define CONTROL_DEVICE "/dev/v4l2loopback"
 
@@ -42,9 +46,41 @@ const QDBusArgument &operator>>(const QDBusArgument &argument, Pids &msg)
     return argument;
 }
 
+static void enableProcessEventListener(int nl_sock, bool enable)
+{
+    int rc;
+    struct __attribute__ ((aligned(NLMSG_ALIGNTO))) {
+        struct nlmsghdr nl_hdr;
+        struct __attribute__ ((__packed__)) {
+            struct cn_msg cn_msg;
+            enum proc_cn_mcast_op cn_mcast;
+        };
+    } nlcn_msg;
+
+    memset(&nlcn_msg, 0, sizeof(nlcn_msg));
+    nlcn_msg.nl_hdr.nlmsg_len = sizeof(nlcn_msg);
+    nlcn_msg.nl_hdr.nlmsg_pid = getpid();
+    nlcn_msg.nl_hdr.nlmsg_type = NLMSG_DONE;
+
+    nlcn_msg.cn_msg.id.idx = CN_IDX_PROC;
+    nlcn_msg.cn_msg.id.val = CN_VAL_PROC;
+    nlcn_msg.cn_msg.len = sizeof(enum proc_cn_mcast_op);
+
+    nlcn_msg.cn_mcast = enable ? PROC_CN_MCAST_LISTEN : PROC_CN_MCAST_IGNORE;
+
+    rc = send(nl_sock, &nlcn_msg, sizeof(nlcn_msg), 0);
+    if (rc < 0) {
+        qFatal("Failed to %s process event listener: %s", enable ? "enable" : "disable", strerror(errno));
+        return;
+    }
+
+    return;
+}
+
 AccessMediator::AccessMediator(QObject *parent) :
     QObject(parent),
     m_notifyThread(new QThread(this)),
+    m_netlinkThread(new QThread(this)),
     m_running(true)
 {
     this->m_notifyFd = open(CONTROL_DEVICE, O_RDONLY);
@@ -52,6 +88,23 @@ AccessMediator::AccessMediator(QObject *parent) :
         qFatal("Failed to open control device: %s", strerror(errno));
         exit(2);
         return;
+    }
+
+    this->m_netlinkFd = socket(PF_NETLINK, SOCK_DGRAM, NETLINK_CONNECTOR);
+    if (this->m_netlinkFd < 0) {
+        qWarning("Failed to open process event netlink socket: %s", strerror(errno));
+    } else {
+        struct sockaddr_nl procEventNl;
+        procEventNl.nl_family = AF_NETLINK;
+        procEventNl.nl_groups = CN_IDX_PROC;
+        procEventNl.nl_pid = getpid();
+
+        int rc = bind(this->m_netlinkFd, (struct sockaddr *)&procEventNl, sizeof(procEventNl));
+        if (rc < 0) {
+            qWarning("Failed to bind process event netlink socket: %s", strerror(errno));
+        } else {
+            enableProcessEventListener(this->m_netlinkFd, true);
+        }
     }
 
     qDBusRegisterMetaType<Pids>();
@@ -71,14 +124,29 @@ AccessMediator::AccessMediator(QObject *parent) :
     QObject::connect(this->m_notifyThread, &QThread::started,
                      this, &AccessMediator::runNotificationLoop, Qt::DirectConnection);
     this->m_notifyThread->start();
+
+    QObject::connect(this->m_netlinkThread, &QThread::started,
+                     this, &AccessMediator::runProcessNotificationLoop, Qt::DirectConnection);
+    this->m_netlinkThread->start();
 }
 
 AccessMediator::~AccessMediator()
 {
     this->m_running = false;
-    close(this->m_notifyFd);
+
+    if (this->m_notifyFd >= 0)
+        close(this->m_notifyFd);
+
+    if (this->m_netlinkFd >= 0) {
+        enableProcessEventListener(this->m_netlinkFd, false);
+        close(this->m_netlinkFd);
+    }
+
     this->m_notifyThread->terminate();
+    this->m_netlinkThread->terminate();
+
     this->m_notifyThread->wait(1000);
+    this->m_netlinkThread->wait(1000);
 }
 
 void AccessMediator::appPaused(QString name, Pids pids)
@@ -101,6 +169,52 @@ void AccessMediator::appResumed(QString name, Pids pids)
             if (tracking.fdsPerPid.find(pid) != tracking.fdsPerPid.end()) {
                 emit accessAllowed(QString::fromStdString(device.first));
             }
+        }
+    }
+}
+
+void AccessMediator::runProcessNotificationLoop()
+{
+    int rc;
+    struct __attribute__ ((aligned(NLMSG_ALIGNTO))) {
+        struct nlmsghdr nl_hdr;
+        struct __attribute__ ((__packed__)) {
+            struct cn_msg cn_msg;
+            struct proc_event proc_ev;
+        };
+    } nlcn_msg;
+
+    if (this->m_netlinkFd < 0)
+        return;
+
+    while (this->m_running) {
+        rc = recv(this->m_netlinkFd, &nlcn_msg, sizeof(nlcn_msg), 0);
+        if (rc == 0) {
+            return;
+        } else if (rc < 0) {
+            if (errno == EINTR) continue;
+            qWarning("netlink recv");
+            return;
+        }
+
+        switch (nlcn_msg.proc_ev.what) {
+            case proc_event::what::PROC_EVENT_EXIT:
+            {
+                const auto& pid = nlcn_msg.proc_ev.event_data.exit.process_tgid;
+
+                for (const auto& device : this->m_devices) {
+                    std::map<int, int> &fdsPerPid = this->m_devices[device.first].fdsPerPid;
+                    if (fdsPerPid.find(pid) == fdsPerPid.end())
+                        continue;
+
+                    fdsPerPid.erase(pid);
+                    qInfo("Device %s closed due to exit of %d", device.first.c_str(), pid);
+                    emit deviceClosed(QString::fromStdString(device.first));
+                }
+            }
+                break;
+            default:
+                break;
         }
     }
 }
@@ -146,7 +260,7 @@ void AccessMediator::runNotificationLoop()
 
             break;
         case HINT_CLOSE:
-            if (--fdsPerPid[hint->pid] == 0) {
+            if (--fdsPerPid[hint->pid] <= 0) {
                 fdsPerPid.erase(hint->pid);
                 qInfo("Device %s closed by %d", deviceName.toUtf8().data(), hint->pid);
                 emit deviceClosed(deviceName);

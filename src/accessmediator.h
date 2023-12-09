@@ -41,10 +41,13 @@ private slots:
 
 private:
     void runNotificationLoop();
+    void runProcessNotificationLoop();
 
     bool m_running;
     QThread* m_notifyThread;
+    QThread* m_netlinkThread;
     int m_notifyFd;
+    int m_netlinkFd;
     std::map<std::string, TrackingInfo> m_devices;
 
 signals:
