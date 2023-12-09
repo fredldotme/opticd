@@ -69,18 +69,18 @@ int main(int argc, char *argv[])
                                                        cameraInfo.description);
 
         // Register created device with the mediator
-        QObject::connect(sink, &V4L2LoopbackSink::deviceCreated,
+        QObject::connect(sink.get(), &V4L2LoopbackSink::deviceCreated,
                          &mediator, &AccessMediator::registerDevice, Qt::DirectConnection);
-        QObject::connect(sink, &V4L2LoopbackSink::deviceRemoved,
+        QObject::connect(sink.get(), &V4L2LoopbackSink::deviceRemoved,
                          &mediator, &AccessMediator::unregisterDevice, Qt::DirectConnection);
 
         // Cause open() on devices to start frame feed
         QObject::connect(&mediator, &AccessMediator::accessAllowed,
-                         sink, &V4L2LoopbackSink::feedDummyFrame, Qt::DirectConnection);
+                         sink.get(), &V4L2LoopbackSink::feedDummyFrame, Qt::DirectConnection);
         QObject::connect(&mediator, &AccessMediator::accessAllowed,
-                         source, &HybrisCameraSource::start, Qt::DirectConnection);
+                         source.get(), &HybrisCameraSource::start, Qt::DirectConnection);
         QObject::connect(&mediator, &AccessMediator::deviceClosed,
-                         source, &HybrisCameraSource::stop, Qt::DirectConnection);
+                         source.get(), &HybrisCameraSource::stop, Qt::DirectConnection);
 
         // Frame passing through one-way communication from source to sink
         QObject::connect(source.get(), &HybrisCameraSource::captured,

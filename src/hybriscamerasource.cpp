@@ -104,8 +104,7 @@ HybrisCameraSource::HybrisCameraSource(HybrisCameraInfo info, EGLContext context
     android_camera_set_preview_size(this->m_control, this->width(), this->height());
     android_camera_set_rotation(this->m_control, info.orientation);
 
-    this->m_intermediateBuffer.resize(this->width() * this->height() * 4);
-    this->m_pixelBuffer.resize(this->width() * this->height() * 3);
+    this->m_pixelBuffer.resize(this->width() * this->height() * 4);
 
     int min, max;
     android_camera_get_preview_fps_range(this->m_control, &min, &max);
@@ -198,11 +197,10 @@ void HybrisCameraSource::requestFrame()
     glBindFramebuffer(GL_FRAMEBUFFER, this->m_fbo);
     glBindTexture(GL_TEXTURE_EXTERNAL_OES, this->m_texture);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_EXTERNAL_OES, this->m_texture, 0);
-    glReadPixels(0, 0, this->width(), this->height(), GL_RGBA, GL_UNSIGNED_BYTE, (char*)this->m_intermediateBuffer.data());
+    glReadPixels(0, 0, this->width(), this->height(), GL_RGBA, GL_UNSIGNED_BYTE, (char*)this->m_pixelBuffer.data());
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glBindTexture(GL_TEXTURE_2D, 0);
 
-    removeAlpha((uint8_t*)this->m_intermediateBuffer.data(), (uint8_t*)this->m_pixelBuffer.data(), this->m_intermediateBuffer.length());
     emit captured(this->m_pixelBuffer);
 }
 

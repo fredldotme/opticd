@@ -56,7 +56,7 @@ void V4L2LoopbackSink::addLoopbackDevice()
 
     this->m_path = QStringLiteral("/dev/video%1").arg(ret);
     this->m_deviceNumber = ret;
-    this->m_vidsendsiz = this->m_width * this->m_height * 3;
+    this->m_vidsendsiz = this->m_width * this->m_height * 4;
     close(fd);
 
     qInfo("v4l2sink device '%s' created", this->m_path.toUtf8().data());
@@ -111,7 +111,7 @@ void V4L2LoopbackSink::openLoopbackDevice()
 
     v.fmt.pix.width = this->m_width;
     v.fmt.pix.height = this->m_height;
-    v.fmt.pix.pixelformat = V4L2_PIX_FMT_RGB24;
+    v.fmt.pix.pixelformat = V4L2_PIX_FMT_RGBA32;
     v.fmt.pix.sizeimage = this->m_vidsendsiz;
     t = ioctl(this->m_sinkFd, VIDIOC_S_FMT, &v);
     if (t < 0) {

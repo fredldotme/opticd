@@ -57,7 +57,6 @@ private:
     GLuint m_fbo;
     GLuint m_texture;
     QMutex m_bufferMutex;
-    QByteArray m_intermediateBuffer;
     QByteArray m_pixelBuffer;
     EGLContext m_eglContext;
     EGLDisplay m_eglDisplay;
