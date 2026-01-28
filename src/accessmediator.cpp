@@ -49,24 +49,27 @@ const QDBusArgument &operator>>(const QDBusArgument &argument, Pids &msg)
 static void enableProcessEventListener(int nl_sock, bool enable)
 {
     int rc;
-    struct __attribute__ ((aligned(NLMSG_ALIGNTO))) {
+    struct nl_data {
+        enum proc_cn_mcast_op cn_mcast;
+        struct cn_msg cn_msg;
+    };
+    struct nlcn_msg {
         struct nlmsghdr nl_hdr;
-        struct __attribute__ ((__packed__)) {
-            struct cn_msg cn_msg;
-            enum proc_cn_mcast_op cn_mcast;
-        };
-    } nlcn_msg;
+        struct nl_data nl_data;
+    };
+
+    struct nlcn_msg nlcn_msg;
 
     memset(&nlcn_msg, 0, sizeof(nlcn_msg));
     nlcn_msg.nl_hdr.nlmsg_len = sizeof(nlcn_msg);
     nlcn_msg.nl_hdr.nlmsg_pid = getpid();
     nlcn_msg.nl_hdr.nlmsg_type = NLMSG_DONE;
 
-    nlcn_msg.cn_msg.id.idx = CN_IDX_PROC;
-    nlcn_msg.cn_msg.id.val = CN_VAL_PROC;
-    nlcn_msg.cn_msg.len = sizeof(enum proc_cn_mcast_op);
+    nlcn_msg.nl_data.cn_msg.id.idx = CN_IDX_PROC;
+    nlcn_msg.nl_data.cn_msg.id.val = CN_VAL_PROC;
+    nlcn_msg.nl_data.cn_msg.len = sizeof(enum proc_cn_mcast_op);
 
-    nlcn_msg.cn_mcast = enable ? PROC_CN_MCAST_LISTEN : PROC_CN_MCAST_IGNORE;
+    nlcn_msg.nl_data.cn_mcast = enable ? PROC_CN_MCAST_LISTEN : PROC_CN_MCAST_IGNORE;
 
     rc = send(nl_sock, &nlcn_msg, sizeof(nlcn_msg), 0);
     if (rc < 0) {
@@ -176,13 +179,16 @@ void AccessMediator::appResumed(QString name, Pids pids)
 void AccessMediator::runProcessNotificationLoop()
 {
     int rc;
-    struct __attribute__ ((aligned(NLMSG_ALIGNTO))) {
+    struct nl_data {
+        struct proc_event proc_ev;
+        struct cn_msg cn_msg;
+    };
+    struct nlcn_msg {
         struct nlmsghdr nl_hdr;
-        struct __attribute__ ((__packed__)) {
-            struct cn_msg cn_msg;
-            struct proc_event proc_ev;
-        };
-    } nlcn_msg;
+        struct nl_data nl_data;
+    };
+
+    struct nlcn_msg nlcn_msg;
 
     if (this->m_netlinkFd < 0)
         return;
@@ -197,10 +203,10 @@ void AccessMediator::runProcessNotificationLoop()
             return;
         }
 
-        switch (nlcn_msg.proc_ev.what) {
-            case proc_event::what::PROC_EVENT_EXIT:
+        switch (nlcn_msg.nl_data.proc_ev.what) {
+            case proc_cn_event::PROC_EVENT_EXIT:
             {
-                const auto& pid = nlcn_msg.proc_ev.event_data.exit.process_tgid;
+                const auto& pid = nlcn_msg.nl_data.proc_ev.event_data.exit.process_tgid;
 
                 for (const auto& device : this->m_devices) {
                     std::map<int, int> &fdsPerPid = this->m_devices[device.first].fdsPerPid;
