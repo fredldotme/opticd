@@ -1,0 +1,121 @@
+name: opticd
+adopt-info: opticd
+license: GPL-2.0-only
+summary: opticd V4L2 bridge
+description: |
+  TBD
+confinement: strict
+base: core24
+compression: lzo
+
+platforms:
+  arm64:
+    build-on: [arm64]
+  amd64:
+    build-on: [amd64]
+  armhf:
+    build-on: [armhf]
+
+apps:
+  opticd:
+    environment:
+        EGL_PLATFORM: "null"
+    command-chain:
+      - bin/gpu-2404-wrapper
+    command: usr/bin/opticd
+    plugs: [ camera ]
+
+lint:
+  ignore:
+    - classic
+    - library
+
+layout:
+  /usr/share/locale:
+    bind: $SNAP/usr/share/locale
+
+parts:
+  android-headers:
+    plugin: autotools
+    source: https://github.com/Halium/android-headers.git
+    source-branch: halium-11.0
+    override-build: |
+      export PREFIX=$CRAFT_PART_INSTALL/usr
+      make
+      make install
+
+  hybris:
+    # This provides the essential APIs
+    #   o libGL.so.0
+    #   o libEGL.so.1
+    after: [ android-headers ]
+    plugin: autotools
+    source: https://github.com/libhybris/libhybris.git
+    source-branch: master
+    build-packages:
+      - pkg-config
+      - libwayland-dev
+      - libwayland-egl-backend-dev
+      - libglvnd-dev
+    build-environment:
+      - CFLAGS: -Wno-pointer-to-int-cast
+      - CXXFLAGS: -Wno-pointer-to-int-cast
+    override-build: |
+      ARCH=arm64
+      [ "$CRAFT_ARCH_BUILD_FOR" == "armhf" ] && ARCH=arm
+      HYBRISLDPATH="/system/lib64:/vendor/lib64:/odm/lib64"
+      [ "$CRAFT_ARCH_BUILD_FOR" == "armhf" ] && HYBRISLDPATH="/system/lib:/vendor/lib:/odm/lib"
+      cd $CRAFT_PART_SRC_WORK/hybris
+      export PKG_CONFIG_PATH=$CRAFT_STAGE/usr/lib/pkgconfig
+      ./autogen.sh
+      ./configure --prefix=/usr --enable-arch=$ARCH --enable-wayland --enable-glvnd \
+          --with-android-headers=$CRAFT_STAGE/usr/include/android \
+          --enable-mali-quirks --enable-experimental --enable-debug --enable-trace \
+          --with-default-hybris-ld-library-path=$HYBRISLDPATH --with-default-egl-platform=wayland
+      CFLAGS=-Wno-pointer-to-int-cast CXXFLAGS=-Wno-pointer-to-int-cast make -j$(nproc --all)
+      DESTDIR=$CRAFT_PART_INSTALL make install
+    override-prime: |
+      craftctl default
+    # prime:
+    #   - usr/lib
+
+  opticd:
+    after: [ hybris ]
+    source: .
+    plugin: cmake
+    cmake-parameters:
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      - -DCMAKE_INSTALL_PREFIX=/usr
+    override-build: |
+      cd $CRAFT_PART_SRC
+      craftctl set version="$(git describe --abbrev=0 --tags)"
+      export PKG_CONFIG_PATH=$CRAFT_STAGE/usr/lib/pkgconfig
+      craftctl default
+    override-prime: |
+      craftctl default
+    build-packages:
+      - build-essential
+      - gettext
+      - libssl-dev
+      - libexpat1-dev
+      - zlib1g-dev
+      - asciidoc
+      - xmlto
+      - qt5-qmake
+      - qttools5-dev
+      - build-essential
+      - libcap-dev
+    stage-packages:
+      - gettext
+
+  gpu-2404:
+    after: [ opticd ]
+    source: https://github.com/canonical/gpu-snap.git
+    plugin: dump
+    override-prime: |
+      craftctl default
+      ${CRAFT_PART_SRC}/bin/gpu-2404-cleanup mesa-2404
+      # Workaround for https://bugs.launchpad.net/snapd/+bug/2055273
+      mkdir -p "${CRAFT_PRIME}/gpu-2404"
+    prime:
+    - bin/gpu-2404-wrapper
