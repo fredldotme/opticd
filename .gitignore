@@ -4,3 +4,4 @@ build/
 debian/files
 debian/opticd.debhelper.log
 debian/opticd.substvars
+*.snap
